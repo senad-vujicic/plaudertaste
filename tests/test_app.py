@@ -1,9 +1,10 @@
 import logging
+import threading
 
 import numpy as np
 import pytest
 
-from plaudertaste.app import App
+from plaudertaste.app import App, Status
 from plaudertaste.recorder import RecorderError
 
 RATE = 16_000
@@ -115,3 +116,53 @@ def test_missing_microphone_is_logged(caplog: pytest.LogCaptureFixture) -> None:
         app.on_start()
 
     assert "Kein Mikrofon" in caplog.text
+
+
+def test_status_sequence_for_one_dictation() -> None:
+    statuses: list[Status] = []
+    app = App(FakeTranscriber(["Hallo"]), FakeRecorder(), paste=lambda text: None, on_status=statuses.append)  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert statuses == [Status.READY, Status.RECORDING, Status.PROCESSING, Status.READY]
+
+
+def test_status_stays_recording_while_previous_dictation_finishes() -> None:
+    """Neue Aufnahme, während die vorige noch verarbeitet wird: Das Ende der vorigen
+    darf den Status nicht auf READY zurücksetzen."""
+    first_started = threading.Event()
+    release_first = threading.Event()
+
+    class SlowTranscriber:
+        def transcribe(self, audio: np.ndarray) -> str:
+            first_started.set()
+            release_first.wait(timeout=5)
+            return "erstes Diktat"
+
+    statuses: list[Status] = []
+    five_updates = threading.Event()
+
+    def record_status(status: Status) -> None:
+        statuses.append(status)
+        if len(statuses) == 5:
+            five_updates.set()
+
+    app = App(SlowTranscriber(), FakeRecorder(), paste=lambda text: None, on_status=record_status)  # type: ignore[arg-type]
+    app.start()
+    app.on_start()
+    app.on_stop()
+    assert first_started.wait(timeout=5)
+
+    app.on_start()  # zweite Aufnahme beginnt, während die erste noch läuft
+    release_first.set()  # jetzt wird die erste fertig
+    assert five_updates.wait(timeout=5)
+
+    assert statuses == [
+        Status.READY,
+        Status.RECORDING,
+        Status.PROCESSING,
+        Status.RECORDING,  # zweite Aufnahme
+        Status.RECORDING,  # erste fertig – Status bleibt korrekt auf Aufnahme
+    ]
+    app.on_cancel()
+    app.stop()

@@ -31,6 +31,35 @@ def parse_hotkey(text: str) -> frozenset[str]:
     return frozenset(parts)
 
 
+_DISPLAY_NAMES: dict[str, str] = {
+    "ctrl": "Strg",
+    "ctrl_l": "Linke Strg",
+    "ctrl_r": "Rechte Strg",
+    "shift": "Umschalt",
+    "shift_l": "Linke Umschalt",
+    "shift_r": "Rechte Umschalt",
+    "alt": "Alt",
+    "alt_l": "Alt",
+    "alt_r": "Rechte Alt",
+    "alt_gr": "AltGr",
+    "cmd": "Win",
+    "cmd_l": "Win",
+    "cmd_r": "Rechte Win",
+    "space": "Leertaste",
+    "caps_lock": "Feststell",
+    "scroll_lock": "Rollen",
+    "pause": "Pause",
+    "insert": "Einfg",
+    "menu": "Menü",
+}
+
+
+def describe_hotkey(text: str) -> str:
+    """Lesbarer Name für die Oberfläche, z. B. "ctrl+cmd" -> "Strg + Win"."""
+    parts = [part.strip().lower() for part in text.split("+")]
+    return " + ".join(_DISPLAY_NAMES.get(part, part.upper()) for part in parts)
+
+
 class _State(Enum):
     IDLE = auto()
     RECORDING = auto()

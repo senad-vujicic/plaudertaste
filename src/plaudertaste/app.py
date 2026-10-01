@@ -7,6 +7,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable
+from enum import Enum
 
 import numpy as np
 
@@ -19,11 +20,19 @@ log = logging.getLogger(__name__)
 MIN_DURATION_S = 0.3  # kürzere Aufnahmen gelten als versehentliches Antippen
 
 
+class Status(Enum):
+    LOADING = "Modell wird geladen …"
+    READY = "Bereit"
+    RECORDING = "Aufnahme läuft"
+    PROCESSING = "Wird verarbeitet …"
+
+
 class App:
     """Die Hotkey-Callbacks laufen im Tastatur-Thread und müssen sofort zurückkehren.
 
     Die langsame Arbeit (Spracherkennung, Einfügen) erledigt ein eigener Worker-Thread,
-    der Aufnahmen über eine Warteschlange bekommt.
+    der Aufnahmen über eine Warteschlange bekommt. Statuswechsel werden über
+    `on_status` gemeldet – aus beliebigen Threads.
     """
 
     def __init__(
@@ -31,15 +40,23 @@ class App:
         transcriber: Transcriber,
         recorder: Recorder,
         paste: Callable[[str], None] = paste_text,
+        on_status: Callable[[Status], None] = lambda status: None,
     ) -> None:
         self._transcriber = transcriber
         self._recorder = recorder
         self._paste = paste
+        self._on_status = on_status
         self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
+        # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
+        # damit eine neue Aufnahme nicht vom Ende der vorherigen überschrieben wird.
+        self._state_lock = threading.Lock()
+        self._recording = False
+        self._pending = 0
 
     def start(self) -> None:
         self._worker.start()
+        self._publish_status()
 
     def stop(self) -> None:
         """Arbeitet noch wartende Aufnahmen ab und beendet dann den Worker."""
@@ -51,21 +68,26 @@ class App:
     def on_start(self) -> None:
         try:
             self._recorder.start()
-            log.info("● Aufnahme läuft …")
         except RecorderError as exc:
             log.error("%s", exc)
+            return
+        self._update(recording=True)
+        log.info("Aufnahme läuft …")
 
     def on_stop(self) -> None:
         audio = self._recorder.stop()
         duration = audio.size / self._recorder.sample_rate
         if duration < MIN_DURATION_S:
+            self._update(recording=False)
             log.info("Zu kurz (%.1f s) – ignoriert.", duration)
             return
         log.info("Verarbeite %.1f s Audio …", duration)
+        self._update(recording=False, pending_delta=1)
         self._jobs.put(audio)
 
     def on_cancel(self) -> None:
         self._recorder.stop()
+        self._update(recording=False)
         log.info("Abgebrochen (andere Taste gedrückt).")
 
     # --- Worker-Thread ---
@@ -73,6 +95,7 @@ class App:
     def _work(self) -> None:
         while (audio := self._jobs.get()) is not None:
             self._process(audio)
+            self._update(pending_delta=-1)
 
     def _process(self, audio: np.ndarray) -> None:
         try:
@@ -87,3 +110,27 @@ class App:
         except Exception:
             # Ein Fehler bei einer Aufnahme darf das Tool nicht beenden.
             log.exception("Fehler bei der Verarbeitung")
+
+    # --- Status ---
+
+    def _update(self, recording: bool | None = None, pending_delta: int = 0) -> None:
+        with self._state_lock:
+            if recording is not None:
+                self._recording = recording
+            self._pending += pending_delta
+            self._publish_status_locked()
+
+    def _publish_status(self) -> None:
+        with self._state_lock:
+            self._publish_status_locked()
+
+    def _publish_status_locked(self) -> None:
+        # Berechnen und Melden unter derselben Sperre: So kann eine veraltete Meldung
+        # aus einem anderen Thread nie nach einer neueren ankommen.
+        if self._recording:
+            status = Status.RECORDING
+        elif self._pending:
+            status = Status.PROCESSING
+        else:
+            status = Status.READY
+        self._on_status(status)

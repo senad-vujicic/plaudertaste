@@ -1,7 +1,7 @@
 import pytest
 from pynput.keyboard import Key, KeyCode
 
-from plaudertaste.hotkey import PushToTalk, key_name, parse_hotkey
+from plaudertaste.hotkey import PushToTalk, describe_hotkey, key_name, parse_hotkey
 
 
 class Recorder:
@@ -147,3 +147,16 @@ def test_parse_hotkey_rejects_invalid(text: str) -> None:
 )
 def test_key_name(key: Key | KeyCode | None, expected: str | None) -> None:
     assert key_name(key) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("ctrl_r", "Rechte Strg"),
+        ("ctrl+cmd", "Strg + Win"),
+        ("f9", "F9"),
+        ("alt+d", "Alt + D"),
+    ],
+)
+def test_describe_hotkey(text: str, expected: str) -> None:
+    assert describe_hotkey(text) == expected
