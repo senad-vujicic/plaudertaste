@@ -33,6 +33,7 @@ def test_default_file_is_valid_toml_with_comments() -> None:
         "model": "auto",
         "device": "auto",
         "sound": True,
+        "overlay": True,
     }
 
 

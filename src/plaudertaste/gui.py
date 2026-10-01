@@ -22,6 +22,7 @@ from plaudertaste import paths
 from plaudertaste.app import App, Status
 from plaudertaste.config import Config, ConfigError, load_config, save_config
 from plaudertaste.hotkey import PushToTalk, describe_hotkey, parse_hotkey, start_listener
+from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
 from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
@@ -46,11 +47,20 @@ class Controller(QObject):
         self._app: App | None = None
         self._listener: keyboard.Listener | None = None
         self._status = Status.LOADING
+        self._recorder = Recorder()
         self._tones = TonePlayer(config.sound)
+        self._overlay = Overlay(level_source=lambda: self._recorder.level)
 
-        self.tray = Tray(describe_hotkey(config.hotkey), config.sound, paths.config_file(), log_file)
+        self.tray = Tray(
+            describe_hotkey(config.hotkey),
+            config.sound,
+            config.overlay,
+            paths.config_file(),
+            log_file,
+        )
         self.tray.quit_requested.connect(self.shutdown)
         self.tray.sound_toggled.connect(self._on_sound_toggled)
+        self.tray.overlay_toggled.connect(self._on_overlay_toggled)
         self.status_changed.connect(self._on_status)
         self.model_loaded.connect(self._on_model_loaded)
         self.model_failed.connect(self._on_model_failed)
@@ -72,7 +82,7 @@ class Controller(QObject):
     def _on_model_loaded(self, transcriber: Transcriber) -> None:
         choice = transcriber.choice
         log.info("Modell '%s' bereit (%s).", choice.name, choice.device.upper())
-        self._app = App(transcriber, Recorder(), on_status=self.status_changed.emit)
+        self._app = App(transcriber, self._recorder, on_status=self.status_changed.emit)
         self._app.start()
         push_to_talk = PushToTalk(
             self._combo, self._app.on_start, self._app.on_stop, self._app.on_cancel
@@ -83,18 +93,27 @@ class Controller(QObject):
     def _on_status(self, status: Status) -> None:
         tone = tone_for_transition(self._status, status)
         self._status = status
-        self.tray.set_status(status)  # zuerst das Icon: play() braucht ~100 ms
+        self.tray.set_status(status)  # zuerst Icon und Overlay: play() braucht ~100 ms
+        if self._config.overlay:
+            self._overlay.set_status(status)
         if tone is not None:
             self._tones.play(tone)
 
     def _on_sound_toggled(self, enabled: bool) -> None:
         self._tones.enabled = enabled
-        self._config = replace(self._config, sound=enabled)
+        self._save_setting(sound=enabled)
+
+    def _on_overlay_toggled(self, enabled: bool) -> None:
+        self._overlay.set_status(self._status if enabled else Status.READY)
+        self._save_setting(overlay=enabled)
+
+    def _save_setting(self, **changes: object) -> None:
+        self._config = replace(self._config, **changes)
         try:
             save_config(paths.config_file(), self._config)
         except OSError:
             log.exception("Einstellung konnte nicht gespeichert werden")
-        log.info("Ton bei Aufnahme: %s", "an" if enabled else "aus")
+        log.info("Einstellung geändert: %s", changes)
 
     def _on_model_failed(self, message: str) -> None:
         QMessageBox.critical(
@@ -113,6 +132,7 @@ class Controller(QObject):
             self._listener.stop()
         if self._app is not None:
             self._app.stop()
+        self._overlay.hide()
         self.tray.hide()
         QApplication.quit()
 

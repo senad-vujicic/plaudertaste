@@ -22,11 +22,18 @@ class Recorder:
         self._chunks: list[np.ndarray] = []
         self._lock = threading.Lock()
         self._stream: sd.InputStream | None = None
+        self._level = 0.0
+
+    @property
+    def level(self) -> float:
+        """Aktuelle Lautstärke (RMS, 0–1) – für die Pegelanzeige."""
+        return self._level
 
     def start(self) -> None:
         if self._stream is not None:
             return
         self._chunks = []
+        self._level = 0.0
         try:
             self._stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -49,6 +56,7 @@ class Recorder:
         self._stream.stop()
         self._stream.close()
         self._stream = None
+        self._level = 0.0
         with self._lock:
             chunks, self._chunks = self._chunks, []
         if not chunks:
@@ -57,5 +65,7 @@ class Recorder:
 
     def _on_audio(self, indata: np.ndarray, frames: int, time: object, status: object) -> None:
         # Läuft im Audio-Thread: nur kopieren, nichts Langsames tun.
+        samples = indata[:, 0].copy()
+        self._level = float(np.sqrt(np.mean(samples**2))) if samples.size else 0.0
         with self._lock:
-            self._chunks.append(indata[:, 0].copy())
+            self._chunks.append(samples)

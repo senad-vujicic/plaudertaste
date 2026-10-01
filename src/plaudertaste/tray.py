@@ -71,9 +71,15 @@ def open_file(path: Path) -> None:
 class Tray(QSystemTrayIcon):
     quit_requested = Signal()
     sound_toggled = Signal(bool)
+    overlay_toggled = Signal(bool)
 
     def __init__(
-        self, hotkey_label: str, sound_enabled: bool, config_file: Path, log_file: Path
+        self,
+        hotkey_label: str,
+        sound_enabled: bool,
+        overlay_enabled: bool,
+        config_file: Path,
+        log_file: Path,
     ) -> None:
         super().__init__()
         self._hotkey_label = hotkey_label
@@ -87,6 +93,9 @@ class Tray(QSystemTrayIcon):
         self.sound_action = QAction("Ton bei Aufnahme", checkable=True, checked=sound_enabled)
         self.sound_action.toggled.connect(self.sound_toggled)
         self._menu.addAction(self.sound_action)
+        self.overlay_action = QAction("Overlay anzeigen", checkable=True, checked=overlay_enabled)
+        self.overlay_action.toggled.connect(self.overlay_toggled)
+        self._menu.addAction(self.overlay_action)
         self._menu.addSeparator()
         self._menu.addAction("Konfigurationsdatei öffnen", lambda: open_file(config_file))
         self._menu.addAction("Logdatei öffnen", lambda: open_file(log_file))

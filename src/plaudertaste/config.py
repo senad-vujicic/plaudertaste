@@ -27,6 +27,7 @@ _COMMENTS: dict[str, str] = {
     ),
     "device": "Rechengerät: \"auto\", \"cpu\" oder \"cuda\" (NVIDIA-GPU)",
     "sound": "Kurzer Ton bei Start und Ende der Aufnahme: true oder false",
+    "overlay": "Anzeige unten am Bildschirm während Aufnahme und Verarbeitung: true oder false",
 }
 _TYPE_HINTS = {str: "ein Text in Anführungszeichen", bool: "true oder false"}
 
@@ -42,6 +43,7 @@ class Config:
     model: str = "auto"
     device: str = "auto"
     sound: bool = True
+    overlay: bool = True
 
 
 def render_config(config: Config) -> str:
