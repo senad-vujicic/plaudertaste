@@ -81,7 +81,7 @@ class App:
             if not text:
                 log.info("Kein Text erkannt.")
                 return
-            self._paste(text)
+            self._paste(text + " ")  # trennt aufeinanderfolgende Diktate
             log.info("Eingefügt (%.2f s): %s", time.perf_counter() - started, text)
         except Exception:
             # Ein Fehler bei einer Aufnahme darf das Tool nicht beenden.

@@ -52,7 +52,16 @@ def test_dictation_is_transcribed_and_pasted() -> None:
 
     run_dictations(app, 1)
 
-    assert pasted == ["Hallo Welt"]
+    assert pasted == ["Hallo Welt "]
+
+
+def test_consecutive_dictations_are_separated_by_a_space() -> None:
+    pasted: list[str] = []
+    app = App(FakeTranscriber(["Hey, was geht?", "Alles gut."]), FakeRecorder(), paste=pasted.append)  # type: ignore[arg-type]
+
+    run_dictations(app, 2)
+
+    assert "".join(pasted) == "Hey, was geht? Alles gut. "
 
 
 def test_too_short_recording_is_ignored() -> None:
@@ -82,7 +91,7 @@ def test_error_in_one_dictation_does_not_stop_the_next() -> None:
 
     run_dictations(app, 2)
 
-    assert pasted == ["zweiter Versuch"]
+    assert pasted == ["zweiter Versuch "]
 
 
 def test_cancel_discards_recording() -> None:
