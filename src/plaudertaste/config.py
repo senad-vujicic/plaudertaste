@@ -13,7 +13,7 @@ VALID_MODELS = frozenset(
 )
 VALID_DEVICES = frozenset({"auto", "cpu", "cuda"})
 
-# Kommentare, die beim Anlegen der Datei über jeden Eintrag geschrieben werden.
+# Kommentare, die beim Speichern über jeden Eintrag geschrieben werden.
 _COMMENTS: dict[str, str] = {
     "hotkey": (
         "Taste(n), die zum Sprechen gehalten werden. Mehrere mit '+' verbinden.\n"
@@ -26,7 +26,9 @@ _COMMENTS: dict[str, str] = {
         "\"auto\" = large-v3-turbo mit NVIDIA-GPU, sonst small"
     ),
     "device": "Rechengerät: \"auto\", \"cpu\" oder \"cuda\" (NVIDIA-GPU)",
+    "sound": "Kurzer Ton bei Start und Ende der Aufnahme: true oder false",
 }
+_TYPE_HINTS = {str: "ein Text in Anführungszeichen", bool: "true oder false"}
 
 
 class ConfigError(Exception):
@@ -39,12 +41,13 @@ class Config:
     language: str = "de"
     model: str = "auto"
     device: str = "auto"
+    sound: bool = True
 
 
-def render_default_config() -> str:
-    """Erzeugt den Inhalt einer kommentierten Config-Datei mit Standardwerten."""
+def render_config(config: Config) -> str:
+    """Erzeugt den Inhalt einer kommentierten Config-Datei."""
     blocks = []
-    for key, value in asdict(Config()).items():
+    for key, value in asdict(config).items():
         comment = "\n".join(f"# {line}" for line in _COMMENTS[key].splitlines())
         blocks.append(f"{comment}\n{tomli_w.dumps({key: value})}")
     return "\n".join(blocks)
@@ -57,11 +60,13 @@ def parse_config(data: dict[str, object]) -> Config:
     if unknown:
         raise ConfigError(f"Unbekannte Einträge: {', '.join(unknown)}")
 
+    defaults = Config()
     for key, value in data.items():
-        if not isinstance(value, str):
-            raise ConfigError(f"'{key}' muss ein Text in Anführungszeichen sein.")
+        expected = type(getattr(defaults, key))
+        if not isinstance(value, expected):
+            raise ConfigError(f"'{key}' muss {_TYPE_HINTS[expected]} sein.")
 
-    config = Config(**{k: v.strip() for k, v in data.items()})  # type: ignore[union-attr]
+    config = Config(**{k: v.strip() if isinstance(v, str) else v for k, v in data.items()})  # type: ignore[arg-type]
 
     if not config.hotkey:
         raise ConfigError("'hotkey' darf nicht leer sein.")
@@ -81,8 +86,7 @@ def parse_config(data: dict[str, object]) -> Config:
 def load_config(path: Path) -> Config:
     """Lädt die Config. Fehlt die Datei, wird sie mit Standardwerten angelegt."""
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_default_config(), encoding="utf-8")
+        save_config(path, Config())
         return Config()
 
     try:
@@ -90,3 +94,9 @@ def load_config(path: Path) -> Config:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"Fehler in {path}: {exc}") from exc
     return parse_config(data)
+
+
+def save_config(path: Path, config: Config) -> None:
+    """Speichert die Config – mit Kommentaren, damit sie von Hand lesbar bleibt."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_config(config), encoding="utf-8")

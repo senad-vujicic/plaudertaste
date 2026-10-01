@@ -3,7 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from plaudertaste.config import Config, ConfigError, load_config, parse_config, render_default_config
+from plaudertaste.config import (
+    Config,
+    ConfigError,
+    load_config,
+    parse_config,
+    render_config,
+    save_config,
+)
 
 
 def test_missing_file_is_created_with_defaults(tmp_path: Path) -> None:
@@ -17,7 +24,7 @@ def test_missing_file_is_created_with_defaults(tmp_path: Path) -> None:
 
 
 def test_default_file_is_valid_toml_with_comments() -> None:
-    text = render_default_config()
+    text = render_config(Config())
 
     assert "# Taste(n), die zum Sprechen gehalten werden" in text
     assert tomllib.loads(text) == {
@@ -25,6 +32,7 @@ def test_default_file_is_valid_toml_with_comments() -> None:
         "language": "de",
         "model": "auto",
         "device": "auto",
+        "sound": True,
     }
 
 
@@ -48,6 +56,7 @@ def test_values_are_stripped() -> None:
         ({"hotkey": ""}, "'hotkey' darf nicht leer sein"),
         ({"language": " "}, "'language' darf nicht leer sein"),
         ({"hotkey": 5}, "'hotkey' muss ein Text"),
+        ({"sound": "ja"}, "'sound' muss true oder false sein"),
     ],
 )
 def test_invalid_values_raise_clear_errors(data: dict[str, object], message: str) -> None:
@@ -61,3 +70,20 @@ def test_broken_toml_raises_config_error(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match="Fehler in"):
         load_config(path)
+
+
+def test_bool_values_are_read(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text("sound = false\n", encoding="utf-8")
+
+    assert load_config(path) == Config(sound=False)
+
+
+def test_saved_config_keeps_comments_and_values(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    config = Config(model="small", sound=False)
+
+    save_config(path, config)
+
+    assert load_config(path) == config
+    assert "# Kurzer Ton bei Start und Ende der Aufnahme" in path.read_text(encoding="utf-8")

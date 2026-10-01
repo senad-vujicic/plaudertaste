@@ -70,8 +70,11 @@ def open_file(path: Path) -> None:
 
 class Tray(QSystemTrayIcon):
     quit_requested = Signal()
+    sound_toggled = Signal(bool)
 
-    def __init__(self, hotkey_label: str, config_file: Path, log_file: Path) -> None:
+    def __init__(
+        self, hotkey_label: str, sound_enabled: bool, config_file: Path, log_file: Path
+    ) -> None:
         super().__init__()
         self._hotkey_label = hotkey_label
         self._icons = {status: make_icon(status) for status in Status}
@@ -80,6 +83,10 @@ class Tray(QSystemTrayIcon):
         self._status_action = QAction()
         self._status_action.setEnabled(False)
         self._menu.addAction(self._status_action)
+        self._menu.addSeparator()
+        self.sound_action = QAction("Ton bei Aufnahme", checkable=True, checked=sound_enabled)
+        self.sound_action.toggled.connect(self.sound_toggled)
+        self._menu.addAction(self.sound_action)
         self._menu.addSeparator()
         self._menu.addAction("Konfigurationsdatei öffnen", lambda: open_file(config_file))
         self._menu.addAction("Logdatei öffnen", lambda: open_file(log_file))

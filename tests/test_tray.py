@@ -29,10 +29,21 @@ def test_recording_icon_is_red_and_loading_icon_is_hollow() -> None:
 
 
 def test_tray_texts_follow_status(qapp: QApplication, tmp_path: Path) -> None:
-    tray = Tray("Rechte Strg", tmp_path / "config.toml", tmp_path / "app.log")
+    tray = Tray("Rechte Strg", True, tmp_path / "config.toml", tmp_path / "app.log")
 
     assert tray.toolTip() == "Plaudertaste – Modell wird geladen …"
     tray.set_status(Status.READY)
     assert tray.toolTip() == "Plaudertaste – Bereit – Rechte Strg halten zum Sprechen"
     tray.set_status(Status.RECORDING)
     assert tray.toolTip() == "Plaudertaste – Aufnahme läuft"
+
+
+def test_sound_menu_entry_reports_toggle(qapp: QApplication, tmp_path: Path) -> None:
+    tray = Tray("Rechte Strg", True, tmp_path / "config.toml", tmp_path / "app.log")
+    toggles: list[bool] = []
+    tray.sound_toggled.connect(toggles.append)
+
+    assert tray.sound_action.isChecked()
+    tray.sound_action.trigger()  # wie ein Klick im Menü
+
+    assert toggles == [False]

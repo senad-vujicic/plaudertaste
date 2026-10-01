@@ -11,6 +11,7 @@ import logging
 import signal
 import sys
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 from pynput import keyboard
@@ -18,11 +19,12 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from plaudertaste import paths
-from plaudertaste.app import App
-from plaudertaste.config import Config, ConfigError, load_config
+from plaudertaste.app import App, Status
+from plaudertaste.config import Config, ConfigError, load_config, save_config
 from plaudertaste.hotkey import PushToTalk, describe_hotkey, parse_hotkey, start_listener
 from plaudertaste.recorder import Recorder
 from plaudertaste.single_instance import acquire_single_instance_lock
+from plaudertaste.sounds import TonePlayer, tone_for_transition
 from plaudertaste.transcriber import Transcriber
 from plaudertaste.tray import Tray
 
@@ -43,10 +45,13 @@ class Controller(QObject):
         self._log_file = log_file
         self._app: App | None = None
         self._listener: keyboard.Listener | None = None
+        self._status = Status.LOADING
+        self._tones = TonePlayer(config.sound)
 
-        self.tray = Tray(describe_hotkey(config.hotkey), paths.config_file(), log_file)
+        self.tray = Tray(describe_hotkey(config.hotkey), config.sound, paths.config_file(), log_file)
         self.tray.quit_requested.connect(self.shutdown)
-        self.status_changed.connect(self.tray.set_status)
+        self.tray.sound_toggled.connect(self._on_sound_toggled)
+        self.status_changed.connect(self._on_status)
         self.model_loaded.connect(self._on_model_loaded)
         self.model_failed.connect(self._on_model_failed)
 
@@ -74,6 +79,22 @@ class Controller(QObject):
         )
         self._listener = start_listener(push_to_talk)
         log.info("Bereit! Halte [%s] gedrückt und sprich.", describe_hotkey(self._config.hotkey))
+
+    def _on_status(self, status: Status) -> None:
+        tone = tone_for_transition(self._status, status)
+        self._status = status
+        self.tray.set_status(status)  # zuerst das Icon: play() braucht ~100 ms
+        if tone is not None:
+            self._tones.play(tone)
+
+    def _on_sound_toggled(self, enabled: bool) -> None:
+        self._tones.enabled = enabled
+        self._config = replace(self._config, sound=enabled)
+        try:
+            save_config(paths.config_file(), self._config)
+        except OSError:
+            log.exception("Einstellung konnte nicht gespeichert werden")
+        log.info("Ton bei Aufnahme: %s", "an" if enabled else "aus")
 
     def _on_model_failed(self, message: str) -> None:
         QMessageBox.critical(
