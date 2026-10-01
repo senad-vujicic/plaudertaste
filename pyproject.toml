@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plaudertaste"
+version = "0.1.0"
+description = "Push-to-Talk-Diktat für Windows – 100 % lokal mit Whisper."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.1",
+    "numpy>=1.26",
+    "pynput>=1.7",
+    "pyperclip>=1.9",
+    "sounddevice>=0.5",
+    "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+# cuBLAS für die GPU-Beschleunigung (CUDA 12). cuDNN bringt ctranslate2 selbst mit.
+gpu = [
+    "nvidia-cublas-cu12",
+]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+plaudertaste = "plaudertaste.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

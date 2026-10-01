@@ -1,0 +1,15 @@
+# Virtuelle Umgebung
+.venv/
+
+# Python-Caches und Build-Artefakte
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Editor / Betriebssystem
+.vscode/
+.idea/
+Thumbs.db
