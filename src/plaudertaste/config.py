@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import tomllib
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 import tomli_w
-
-APP_NAME = "Plaudertaste"
 
 VALID_MODELS = frozenset(
     {"auto", "tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"}
@@ -42,13 +39,6 @@ class Config:
     language: str = "de"
     model: str = "auto"
     device: str = "auto"
-
-
-def default_config_path() -> Path:
-    """Pfad der Config-Datei im Benutzerordner (%APPDATA%\\Plaudertaste)."""
-    base = os.environ.get("APPDATA")
-    root = Path(base) if base else Path.home() / ".config"
-    return root / APP_NAME / "config.toml"
 
 
 def render_default_config() -> str:
