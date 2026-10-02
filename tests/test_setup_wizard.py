@@ -101,8 +101,28 @@ def test_hotkey_capture(wizard: SetupWizard) -> None:
     assert wizard.hotkey_button.text() == "F9"
 
 
+def test_probe_comes_after_options_and_before_done(wizard: SetupWizard) -> None:
+    assert wizard.MODEL < wizard.OPTIONS < wizard.PROBE == wizard.DONE - 1
+
+
+def test_probe_waits_for_model_with_progress(wizard: SetupWizard) -> None:
+    wizard.show_model_progress("large-v3-turbo", 45)
+    wizard._go(wizard.PROBE)
+
+    assert not wizard.probe_field.isEnabled()  # ausgegraut – nicht "kaputt"
+    assert "noch geladen (45 %)" in wizard.probe_instruction.text()
+    assert wizard.probe_bar.value() == 45
+
+    wizard.show_model_ready("large-v3-turbo auf der Grafikkarte (schnell)")
+
+    assert wizard.probe_field.isEnabled()
+    assert "Jetzt ausprobieren" in wizard.probe_instruction.text()
+    assert wizard.probe_bar.isHidden()
+
+
 def test_probe_uses_chosen_hotkey_and_confirms(wizard: SetupWizard) -> None:
     wizard._apply(Config(hotkey="f9"))
+    wizard.show_model_ready("small auf dem Prozessor")
     wizard._go(wizard.PROBE)
     assert "<b>F9</b>" in wizard.probe_instruction.text()
 
@@ -150,4 +170,4 @@ def test_back_from_last_page(wizard: SetupWizard) -> None:
 
     wizard.back_button.click()
 
-    assert wizard.step == wizard.OPTIONS
+    assert wizard.step == wizard.PROBE

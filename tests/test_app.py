@@ -401,3 +401,13 @@ def test_typing_after_dictation_blocks_undo() -> None:
     app.stop()
 
     assert erased == []
+
+
+def test_whisper_repetition_loop_is_cleaned_before_pasting() -> None:
+    pasted: list[str] = []
+    loop = "Du weißt, was ich meine. " + "Und dann geht's, was ich meine. " * 20
+    app = App(FakeTranscriber([loop.strip()]), FakeRecorder(), paste=pasted.append)  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert pasted == ["Du weißt, was ich meine. Und dann geht's, was ich meine. "]

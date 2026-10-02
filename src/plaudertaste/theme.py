@@ -139,6 +139,11 @@ QLineEdit, QPlainTextEdit {{
     min-height: 20px;
 }}
 QLineEdit:focus, QPlainTextEdit:focus {{ border-color: {ACCENT}; }}
+QLineEdit:disabled, QPlainTextEdit:disabled {{
+    background: {SURFACE};
+    border: 1px dashed {BORDER};
+    color: {DISABLED};
+}}
 
 QListWidget#entries, QTableWidget {{
     background: {INPUT};

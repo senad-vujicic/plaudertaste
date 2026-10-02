@@ -16,6 +16,7 @@ from plaudertaste.dictionary import Dictionary
 from plaudertaste.fillers import remove_fillers
 from plaudertaste.paster import erase_before_cursor, paste_text
 from plaudertaste.recorder import Recorder, RecorderError
+from plaudertaste.repetitions import remove_repeated_sentences
 from plaudertaste.transcriber import Transcriber
 from plaudertaste.voice_commands import apply_voice_commands
 
@@ -192,7 +193,12 @@ class App:
             log.info("Kein Text erkannt (%s).", "Stille" if silent else "unverständlich")
             self._on_notice(SILENT_MICROPHONE if silent else NOTHING_UNDERSTOOD)
             return
-        # Reihenfolge: erst Füllwörter weg, dann Sprachbefehle, zuletzt das eigene Wörterbuch.
+        # Reihenfolge: erst Whisper-Schleifen und Füllwörter weg, dann Sprachbefehle, zuletzt
+        # das eigene Wörterbuch.
+        cleaned = remove_repeated_sentences(text)
+        if cleaned != text:
+            log.info("Wiederholungsschleife von Whisper bereinigt.")
+            text = cleaned
         if self.remove_fillers:
             text = remove_fillers(text)
         if self.voice_commands:

@@ -124,5 +124,8 @@ class Transcriber:
             hotwords=self.hotwords,
             beam_size=5,
             vad_filter=True,  # Stille am Anfang/Ende ignorieren, verhindert erfundenen Text
+            # Den schon erkannten Text nicht als Vorgabe für den nächsten 30-s-Abschnitt nutzen:
+            # Das ist die Hauptursache von Wiederholungsschleifen bei langen Diktaten.
+            condition_on_previous_text=False,
         )
         return " ".join(segment.text.strip() for segment in segments).strip()

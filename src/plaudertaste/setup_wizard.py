@@ -1,9 +1,11 @@
 """Einrichtungsassistent für den allerersten Start.
 
-Schritte: Willkommen → Mikrofon (mit Pegeltest) → Hotkey → Sprachmodell → Probe-Diktat →
-Optionen → Fertig. Änderungen wirken sofort (über `settings_changed`), damit das
-Probe-Diktat schon mit dem gewählten Mikrofon und Hotkey funktioniert. "Überspringen"
-behält einfach die Standardwerte.
+Schritte: Willkommen → Mikrofon (mit Pegeltest) → Hotkey → Sprachmodell → Optionen →
+Probe-Diktat → Fertig. Das Probe-Diktat steht am Ende und wartet sichtbar auf das
+Sprachmodell, das im Hintergrund lädt – so wirkt nichts kaputt.
+
+Änderungen wirken sofort (über `settings_changed`), damit das Probe-Diktat schon mit dem
+gewählten Mikrofon und Hotkey funktioniert. "Überspringen" behält die Standardwerte.
 """
 
 from __future__ import annotations
@@ -55,7 +57,7 @@ def _text(html: str) -> QLabel:
 
 
 class SetupWizard(QDialog):
-    WELCOME, MICROPHONE, HOTKEY, MODEL, PROBE, OPTIONS, DONE = range(7)
+    WELCOME, MICROPHONE, HOTKEY, MODEL, OPTIONS, PROBE, DONE = range(7)
 
     settings_changed = Signal(object)  # Settings – sofort anwenden
     capture_requested = Signal()  # Controller soll die nächste Tastenkombination liefern
@@ -78,6 +80,8 @@ class SetupWizard(QDialog):
         self._recorder_factory = recorder_factory
         self._mic_test: Recorder | None = None
         self._finished = False
+        self._model_ready = False
+        self._model_percent: int | None = None  # None = noch kein Fortschritt gemeldet
 
         # --- 1. Willkommen ---
         welcome = _Step(
@@ -151,16 +155,7 @@ class SetupWizard(QDialog):
             self.model_bar,
         )
 
-        # --- 5. Probe-Diktat ---
-        self.probe_instruction = _text("")
-        self.probe_field = QPlainTextEdit()
-        self.probe_field.setPlaceholderText("Hier erscheint dein Text …")
-        self.probe_field.textChanged.connect(self._on_probe_text)
-        self.probe_result = QLabel()
-        self.probe_result.setObjectName("success")
-        probe = _Step("Probe-Diktat", self.probe_instruction, self.probe_field, self.probe_result)
-
-        # --- 6. Optionen ---
+        # --- 5. Optionen ---
         self.autostart_check = ToggleSwitch("Mit Windows starten (still im Infobereich)")
         self.sound_check = ToggleSwitch("Ton bei Start und Ende der Aufnahme")
         self.overlay_check = ToggleSwitch("Overlay unten am Bildschirm anzeigen")
@@ -183,12 +178,31 @@ class SetupWizard(QDialog):
             ),
         )
 
+        # --- 6. Probe-Diktat (wartet, bis das Sprachmodell bereit ist) ---
+        self.probe_instruction = _text("")
+        self.probe_bar = QProgressBar()
+        self.probe_bar.setRange(0, 0)
+        self.probe_field = QPlainTextEdit()
+        self.probe_field.setPlaceholderText("Hier erscheint dein Text …")
+        self.probe_field.setEnabled(False)
+        self.probe_field.textChanged.connect(self._on_probe_text)
+        self.probe_result = QLabel()
+        self.probe_result.setObjectName("success")
+        probe = _Step(
+            "Probe-Diktat",
+            self.probe_instruction,
+            self.probe_bar,
+            self.probe_field,
+            self.probe_result,
+        )
+        self._update_probe()
+
         # --- 7. Fertig ---
         self.summary = _text("")
         done = _Step("Fertig!", self.summary)
 
         self.pages = QStackedWidget()
-        for step in (welcome, microphone, hotkey, model, probe, options, done):
+        for step in (welcome, microphone, hotkey, model, options, probe, done):
             self.pages.addWidget(step)
 
         self.dots = QLabel()
@@ -245,12 +259,7 @@ class SetupWizard(QDialog):
         if index == self.MICROPHONE:
             self._start_mic_test()
         elif index == self.PROBE:
-            hotkey = describe_hotkey(self._settings.config.hotkey)
-            self.probe_instruction.setText(
-                f"Klick ins Feld, halte <b>{hotkey}</b> gedrückt und sag einen Satz. "
-                "Beim Loslassen erscheint er hier."
-            )
-            self.probe_field.setFocus()
+            self._update_probe()
         elif index == self.DONE:
             hotkey = describe_hotkey(self._settings.config.hotkey)
             self.summary.setText(
@@ -363,13 +372,40 @@ class SetupWizard(QDialog):
         self.model_label.setText(f"Sprachmodell <b>{model}</b> wird heruntergeladen … {percent} %")
         self.model_bar.setRange(0, 100)
         self.model_bar.setValue(percent)
+        self._model_percent = percent
+        self._update_probe()
 
     def show_model_ready(self, description: str) -> None:
         self.model_label.setText(f"✓ Bereit: <b>{description}</b>")
         self.model_bar.setRange(0, 100)
         self.model_bar.setValue(100)
+        self._model_ready = True
+        self._update_probe()
 
     # --- Probe-Diktat ---
+
+    def _update_probe(self) -> None:
+        """Ausgegraut mit Fortschritt, solange das Modell lädt – danach zum Ausprobieren."""
+        if not self._model_ready:
+            percent = self._model_percent
+            progress = "" if percent is None else f" ({percent} %)"
+            self.probe_instruction.setText(
+                f"Gleich geht's los: Das Sprachmodell wird noch geladen{progress}. Sobald es "
+                "bereit ist, kannst du hier ausprobieren – oder schon auf „Weiter“ klicken."
+            )
+            if percent is not None:
+                self.probe_bar.setRange(0, 100)
+                self.probe_bar.setValue(percent)
+            return
+        hotkey = describe_hotkey(self._settings.config.hotkey)
+        self.probe_instruction.setText(
+            f"<b>Jetzt ausprobieren:</b> Klick ins Feld, halte <b>{hotkey}</b> gedrückt und "
+            "sag einen Satz. Beim Loslassen erscheint er hier."
+        )
+        self.probe_bar.setVisible(False)
+        self.probe_field.setEnabled(True)
+        if self.step == self.PROBE:
+            self.probe_field.setFocus()
 
     def _on_probe_text(self) -> None:
         if self.probe_field.toPlainText().strip():

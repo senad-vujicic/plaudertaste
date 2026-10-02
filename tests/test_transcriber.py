@@ -1,10 +1,17 @@
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import pytest
 
-from plaudertaste.transcriber import ModelChoice, register_nvidia_dlls, resolve_model
+from plaudertaste.transcriber import (
+    ModelChoice,
+    Transcriber,
+    register_nvidia_dlls,
+    resolve_model,
+)
 
 
 @pytest.mark.parametrize(
@@ -33,3 +40,21 @@ def test_frozen_app_finds_bundled_cublas(tmp_path: Path, monkeypatch: pytest.Mon
     register_nvidia_dlls()  # z. B. nach einem Modellwechsel – PATH darf nicht wachsen
 
     assert os.environ["PATH"].split(os.pathsep) == [str(bin_dir), r"C:\Windows"]
+
+
+def test_transcribe_avoids_repetition_loops() -> None:
+    calls: list[dict[str, Any]] = []
+
+    class FakeModel:
+        def transcribe(self, audio: np.ndarray, **kwargs: Any) -> tuple[list[Any], None]:
+            calls.append(kwargs)
+            return [], None
+
+    transcriber = Transcriber.__new__(Transcriber)  # ohne echtes Modell
+    transcriber._model = FakeModel()  # type: ignore[assignment]
+    transcriber.language, transcriber.hotwords = "de", None
+
+    transcriber.transcribe(np.zeros(16_000, dtype=np.float32))
+
+    assert calls[0]["condition_on_previous_text"] is False  # Hauptursache von Schleifen
+    assert calls[0]["vad_filter"] is True
