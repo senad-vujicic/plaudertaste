@@ -31,5 +31,9 @@ def log_dir() -> Path:
     return local_dir() / "logs"
 
 
+def stats_file() -> Path:
+    return local_dir() / "stats.json"
+
+
 def lock_file() -> Path:
     return local_dir() / "plaudertaste.lock"

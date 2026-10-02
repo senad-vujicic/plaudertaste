@@ -46,7 +46,8 @@ def test_disable_when_already_off_is_harmless(key: str) -> None:
 def test_dev_command_uses_pythonw_without_console() -> None:
     command = autostart.startup_command()
 
-    assert command == f'"{Path(sys.executable).with_name("pythonw.exe")}" -m plaudertaste'
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    assert command == f'"{pythonw}" -m plaudertaste --background'
     assert Path(sys.executable).with_name("pythonw.exe").exists()
 
 
@@ -54,4 +55,4 @@ def test_frozen_command_uses_exe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\Programme\Plaudertaste\Plaudertaste.exe")
 
-    assert autostart.startup_command() == r'"C:\Programme\Plaudertaste\Plaudertaste.exe"'
+    assert autostart.startup_command() == r'"C:\Programme\Plaudertaste\Plaudertaste.exe" --background'

@@ -12,15 +12,16 @@ from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "Plaudertaste"
+BACKGROUND_FLAG = "--background"  # beim Windows-Start still im Tray, ohne Fenster
 
 
 def startup_command() -> str:
     """Befehl, mit dem Windows Plaudertaste nach der Anmeldung startet."""
     if getattr(sys, "frozen", False):  # gebaute .exe (PyInstaller)
-        return f'"{sys.executable}"'
+        return f'"{sys.executable}" {BACKGROUND_FLAG}'
     # Entwicklung: pythonw.exe statt python.exe – startet ohne Konsolenfenster.
     pythonw = Path(sys.executable).with_name("pythonw.exe")
-    return f'"{pythonw}" -m plaudertaste'
+    return f'"{pythonw}" -m plaudertaste {BACKGROUND_FLAG}'
 
 
 def is_enabled(key_path: str = RUN_KEY) -> bool:

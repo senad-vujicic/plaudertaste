@@ -20,6 +20,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--console", action="store_true", help="Meldungen zusätzlich live in der Konsole zeigen"
     )
+    parser.add_argument(
+        "--background",
+        action="store_true",
+        help="still im Infobereich starten, ohne Fenster (für den Autostart)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args(argv)
 
@@ -36,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     # Importfehler landen bereits in der Logdatei.
     from plaudertaste import gui
 
-    return gui.run(log_file)
+    return gui.run(log_file, show_window=not args.background)
 
 
 if __name__ == "__main__":

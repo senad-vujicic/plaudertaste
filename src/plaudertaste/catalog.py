@@ -72,3 +72,8 @@ def language_options() -> list[tuple[str, str]]:
         key=lambda item: item[1].casefold(),
     )
     return [(AUTO, "Automatisch erkennen"), *pinned, *rest]
+
+
+def language_display(code: str) -> str:
+    """Anzeigename für einen Config-Wert, z. B. "de" -> "Deutsch"."""
+    return dict(language_options()).get(code, code)

@@ -70,6 +70,7 @@ def open_file(path: Path) -> None:
 
 class Tray(QSystemTrayIcon):
     quit_requested = Signal()
+    open_requested = Signal()
     settings_requested = Signal()
     sound_toggled = Signal(bool)
     overlay_toggled = Signal(bool)
@@ -92,6 +93,8 @@ class Tray(QSystemTrayIcon):
         self._status_action.setEnabled(False)
         self._menu.addAction(self._status_action)
         self._menu.addSeparator()
+        open_action = self._menu.addAction("Plaudertaste öffnen", self.open_requested.emit)
+        self._menu.setDefaultAction(open_action)  # fett dargestellt, wie bei Windows üblich
         self._menu.addAction("Einstellungen …", self.settings_requested.emit)
         self._menu.addSeparator()
         self.sound_action = QAction("Ton bei Aufnahme", checkable=True, checked=sound_enabled)
@@ -112,7 +115,7 @@ class Tray(QSystemTrayIcon):
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason is QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.settings_requested.emit()
+            self.open_requested.emit()
 
     def set_hotkey_label(self, label: str) -> None:
         self._hotkey_label = label

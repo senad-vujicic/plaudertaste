@@ -166,3 +166,17 @@ def test_status_stays_recording_while_previous_dictation_finishes() -> None:
     ]
     app.on_cancel()
     app.stop()
+
+
+def test_finished_dictation_is_reported_with_duration() -> None:
+    reported: list[tuple[str, float]] = []
+    app = App(
+        FakeTranscriber(["Hallo", ""]),
+        FakeRecorder(seconds=2.0),
+        paste=lambda text: None,
+        on_dictation=lambda text, seconds: reported.append((text, seconds)),
+    )  # type: ignore[arg-type]
+
+    run_dictations(app, 2)  # zweites Diktat ohne Text wird nicht gemeldet
+
+    assert reported == [("Hallo", 2.0)]

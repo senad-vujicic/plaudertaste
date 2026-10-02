@@ -1,4 +1,4 @@
-"""Qt-Oberfläche: verbindet Tray-Icon, Einstellungen, Modell-Laden und Diktat-Ablauf.
+"""Qt-Oberfläche: verbindet Hauptfenster, Tray-Icon, Modell-Laden und Diktat-Ablauf.
 
 Qt-Regel: Fenster und Icon dürfen nur im Haupt-Thread verändert werden. Tastatur-Listener,
 Modell-Lader und Worker laufen in eigenen Threads und melden sich deshalb über Qt-Signale.
@@ -16,13 +16,14 @@ from pathlib import Path
 
 from pynput import keyboard
 from PySide6.QtCore import QObject, QTimer, Signal
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from plaudertaste import autostart, paths
 from plaudertaste.app import App, Status
-from plaudertaste.catalog import AUTO, MODELS, is_model_downloaded
+from plaudertaste.catalog import AUTO, MODELS, is_model_downloaded, language_display
 from plaudertaste.config import Config, ConfigError, load_config, save_config
 from plaudertaste.devices import list_microphones
+from plaudertaste.history import History
 from plaudertaste.hotkey import (
     HotkeyCapture,
     PushToTalk,
@@ -30,13 +31,15 @@ from plaudertaste.hotkey import (
     parse_hotkey,
     start_listener,
 )
+from plaudertaste.main_window import MainWindow, Page
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
-from plaudertaste.settings_dialog import Settings, SettingsDialog
+from plaudertaste.settings_page import DEFAULT_MICROPHONE_LABEL, Settings, SettingsPage
 from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
+from plaudertaste.stats import Stats
 from plaudertaste.transcriber import Transcriber
-from plaudertaste.tray import Tray
+from plaudertaste.tray import Tray, make_icon
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +53,7 @@ def whisper_language(setting: str) -> str | None:
 
 class Controller(QObject):
     status_changed = Signal(object)  # Status – aus App-Threads
+    dictation_finished = Signal(str, float)  # Text, Sprechdauer – aus dem Worker-Thread
     model_loaded = Signal(object)  # Transcriber – aus dem Lade-Thread
     model_failed = Signal(str)
     hotkey_captured = Signal(str)  # aus dem Tastatur-Thread
@@ -64,11 +68,14 @@ class Controller(QObject):
         self._key_target: PushToTalk | HotkeyCapture | None = None
         self._push_to_talk: PushToTalk | None = None
         self._status = Status.LOADING
+        self._model_text = "wird geladen …"
         self._recorder = Recorder(config.microphone)
         self._tones = TonePlayer(config.sound)
         self._overlay = Overlay(level_source=lambda: self._recorder.level)
-        self._settings_dialog: SettingsDialog | None = None
+        self._history = History()
+        self._stats = Stats(paths.stats_file())
         self._config_before_model_change: Config | None = None  # für Rückfall bei Ladefehler
+        self._tray_hint_shown = False
 
         self.tray = Tray(
             describe_hotkey(config.hotkey),
@@ -77,19 +84,43 @@ class Controller(QObject):
             paths.config_file(),
             log_file,
         )
+        self.settings_page = SettingsPage()
+        self.window = MainWindow(
+            make_icon(Status.READY), self.settings_page, self._history, self._stats
+        )
+
         self.tray.quit_requested.connect(self.shutdown)
-        self.tray.settings_requested.connect(self.open_settings)
+        self.tray.open_requested.connect(lambda: self.show_window(Page.START))
+        self.tray.settings_requested.connect(lambda: self.show_window(Page.SETTINGS))
         self.tray.sound_toggled.connect(self._on_sound_toggled)
         self.tray.overlay_toggled.connect(self._on_overlay_toggled)
+        self.window.hidden_to_tray.connect(self._on_window_hidden)
+        self.window.sidebar.currentRowChanged.connect(self._on_page_changed)
+        self.settings_page.save_requested.connect(self.apply_settings)
+        self.settings_page.capture_requested.connect(self._start_hotkey_capture)
+        self.settings_page.capture_cancelled.connect(self._stop_hotkey_capture)
         self.status_changed.connect(self._on_status)
+        self.dictation_finished.connect(self._on_dictation_finished)
         self.model_loaded.connect(self._on_model_loaded)
         self.model_failed.connect(self._on_model_failed)
         self.hotkey_captured.connect(self._on_hotkey_captured)
 
-    def start(self) -> None:
+        self._refresh_start_page()
+        self.window.start_page.set_status(Status.LOADING)
+        self.window.refresh()
+
+    def start(self, show_window: bool) -> None:
         self.tray.show()
+        if show_window:
+            self.show_window(Page.START)
+        self._refresh_autostart_entry()
         self._listener = start_listener(self._on_key_press, self._on_key_release)
         self._load_model_in_background()
+
+    def show_window(self, page: Page) -> None:
+        if page is Page.SETTINGS and self.window.current_page() is Page.SETTINGS:
+            self._load_settings_page()  # Seitenwechsel lädt sonst selbst, hier gibt es keinen
+        self.window.show_page(page)
 
     # --- Tastatur (Listener-Thread) ---
 
@@ -106,8 +137,9 @@ class Controller(QObject):
     # --- Modell ---
 
     def _load_model_in_background(self) -> None:
-        # Im Hintergrund: Das Icon erscheint sofort, ein bisheriges Modell arbeitet weiter.
+        # Im Hintergrund: Fenster und Icon reagieren sofort, ein altes Modell arbeitet weiter.
         self.tray.set_status(Status.LOADING)
+        self.window.start_page.set_status(Status.LOADING)
         threading.Thread(
             target=self._load_model, args=(self._config,), name="model-loader", daemon=True
         ).start()
@@ -131,7 +163,14 @@ class Controller(QObject):
         # Die Sprache kann sich während des Ladens geändert haben.
         transcriber.language = whisper_language(self._config.language)
         self._config_before_model_change = None
-        self._app = App(transcriber, self._recorder, on_status=self.status_changed.emit)
+        self._model_text = f"{choice.name} · {'GPU' if choice.device == 'cuda' else 'CPU'}"
+        self._refresh_start_page()
+        self._app = App(
+            transcriber,
+            self._recorder,
+            on_status=self.status_changed.emit,
+            on_dictation=self.dictation_finished.emit,
+        )
         self._app.start()
         self._activate_push_to_talk()
         log.info("Bereit! Halte [%s] gedrückt und sprich.", describe_hotkey(self._config.hotkey))
@@ -155,8 +194,9 @@ class Controller(QObject):
             self._save_config(replace(self._config, model=previous.model, device=previous.device))
             self._config_before_model_change = None
         self.tray.set_status(self._status)
+        self.window.start_page.set_status(self._status)
         QMessageBox.warning(
-            None,
+            self.window,
             TITLE,
             f"Das Modell '{failed}' konnte nicht geladen werden:\n\n{message}\n\n"
             "Das bisherige Modell bleibt aktiv.",
@@ -173,16 +213,26 @@ class Controller(QObject):
         )
         self._key_target = self._push_to_talk
 
-    # --- Status, Ton, Overlay ---
+    # --- Status, Ton, Overlay, Verlauf, Statistik ---
 
     def _on_status(self, status: Status) -> None:
         tone = tone_for_transition(self._status, status)
         self._status = status
-        self.tray.set_status(status)  # zuerst Icon und Overlay: play() braucht ~100 ms
+        self.tray.set_status(status)  # zuerst Anzeige: play() braucht ~100 ms
+        self.window.start_page.set_status(status)
         if self._config.overlay:
             self._overlay.set_status(status)
         if tone is not None:
             self._tones.play(tone)
+
+    def _on_dictation_finished(self, text: str, seconds: float) -> None:
+        self._history.add(text, seconds)
+        try:
+            self._stats.record(text, seconds)
+        except OSError:
+            log.exception("Statistik konnte nicht gespeichert werden")
+        self.window.refresh()
+        self.window.start_page.set_today(self._stats.today())
 
     def _on_sound_toggled(self, enabled: bool) -> None:
         self._tones.enabled = enabled
@@ -199,40 +249,56 @@ class Controller(QObject):
         except OSError:
             log.exception("Einstellungen konnten nicht gespeichert werden")
 
-    # --- Einstellungsfenster ---
+    def _refresh_start_page(self) -> None:
+        config = self._config
+        self.window.start_page.set_info(
+            hotkey=describe_hotkey(config.hotkey),
+            model=self._model_text,
+            language=language_display(config.language),
+            microphone=config.microphone or DEFAULT_MICROPHONE_LABEL,
+        )
+        self.window.start_page.set_today(self._stats.today())
 
-    def open_settings(self) -> None:
-        if self._settings_dialog is not None:
-            self._settings_dialog.raise_()
-            self._settings_dialog.activateWindow()
-            return
+    # --- Fenster und Einstellungen ---
+
+    def _on_window_hidden(self) -> None:
+        if not self._tray_hint_shown:  # nur beim ersten Mal erklären
+            self._tray_hint_shown = True
+            self.tray.showMessage(
+                TITLE,
+                "Plaudertaste läuft im Hintergrund weiter. Beenden über Rechtsklick → Beenden.",
+                self.tray.icon(),
+            )
+
+    def _on_page_changed(self, row: int) -> None:
+        if row == Page.SETTINGS:
+            self._load_settings_page()
+
+    def _load_settings_page(self) -> None:
         downloaded = {info.name for info in MODELS if is_model_downloaded(info.name)}
-        dialog = SettingsDialog(self._config, autostart.is_enabled(), list_microphones(), downloaded)
-        dialog.capture_requested.connect(self._start_hotkey_capture)
-        dialog.finished.connect(self._on_settings_closed)
-        self._settings_dialog = dialog
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
+        self.settings_page.load(
+            self._config, autostart.is_enabled(), list_microphones(), downloaded
+        )
 
     def _start_hotkey_capture(self) -> None:
         # Diktieren pausieren, sonst würde der gedrückte Hotkey gleich eine Aufnahme starten.
         self._key_target = HotkeyCapture(self.hotkey_captured.emit)
 
-    def _on_hotkey_captured(self, hotkey: str) -> None:
+    def _stop_hotkey_capture(self) -> None:
         self._key_target = self._push_to_talk
-        if self._settings_dialog is not None:
-            self._settings_dialog.set_captured_hotkey(hotkey)
 
-    def _on_settings_closed(self, result: int) -> None:
-        dialog = self._settings_dialog
-        self._settings_dialog = None
-        self._key_target = self._push_to_talk  # falls eine Hotkey-Aufnahme noch offen war
-        if dialog is None:
-            return
-        if result == QDialog.DialogCode.Accepted:
-            self.apply_settings(dialog.settings())
-        dialog.deleteLater()
+    def _on_hotkey_captured(self, hotkey: str) -> None:
+        self._stop_hotkey_capture()
+        self.settings_page.set_captured_hotkey(hotkey)
+
+    def _refresh_autostart_entry(self) -> None:
+        """Einen vorhandenen Autostart-Eintrag auf den aktuellen Befehl bringen
+        (z. B. nach einem Update oder wenn die .exe verschoben wurde)."""
+        try:
+            if autostart.is_enabled():
+                autostart.set_enabled(True)
+        except OSError:
+            log.exception("Autostart-Eintrag konnte nicht aktualisiert werden")
 
     def apply_settings(self, settings: Settings) -> None:
         old, new = self._config, settings.config
@@ -257,9 +323,13 @@ class Controller(QObject):
 
         if (new.model, new.device) != (old.model, old.device):
             self._config_before_model_change = old
+            self._model_text = "wird geladen …"
             self._load_model_in_background()
         elif new.language != old.language and self._app is not None:
             self._app.set_language(whisper_language(new.language))
+
+        self._refresh_start_page()
+        self._load_settings_page()  # zeigt den neuen gespeicherten Stand
 
     def shutdown(self) -> None:
         log.info("Plaudertaste wird beendet.")
@@ -273,10 +343,10 @@ class Controller(QObject):
         QApplication.quit()
 
 
-def run(log_file: Path) -> int:
+def run(log_file: Path, show_window: bool = True) -> int:
     qapp = QApplication(sys.argv)
     qapp.setApplicationName(TITLE)
-    qapp.setQuitOnLastWindowClosed(False)  # Tray-App: läuft ohne offenes Fenster weiter
+    qapp.setQuitOnLastWindowClosed(False)  # läuft im Infobereich weiter, wenn das Fenster zu ist
 
     lock = acquire_single_instance_lock(paths.lock_file())
     if lock is None:
@@ -305,7 +375,7 @@ def run(log_file: Path) -> int:
     log.info("Konfiguration: %s", config_path)
 
     controller = Controller(config, log_file)
-    controller.start()
+    controller.start(show_window)
 
     # Strg+C in der Konsole: Qt blockiert Python-Signale, solange die Ereignisschleife
     # läuft. Ein kurzer Timer gibt Python regelmäßig die Gelegenheit, sie zu verarbeiten.

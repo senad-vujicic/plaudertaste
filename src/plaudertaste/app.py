@@ -32,7 +32,8 @@ class App:
 
     Die langsame Arbeit (Spracherkennung, Einfügen) erledigt ein eigener Worker-Thread,
     der Aufnahmen über eine Warteschlange bekommt. Statuswechsel werden über
-    `on_status` gemeldet – aus beliebigen Threads.
+    `on_status` gemeldet – aus beliebigen Threads. Fertige Diktate meldet `on_dictation`
+    (Text und Sprechdauer in Sekunden) aus dem Worker-Thread.
     """
 
     def __init__(
@@ -41,11 +42,13 @@ class App:
         recorder: Recorder,
         paste: Callable[[str], None] = paste_text,
         on_status: Callable[[Status], None] = lambda status: None,
+        on_dictation: Callable[[str, float], None] = lambda text, seconds: None,
     ) -> None:
         self._transcriber = transcriber
         self._recorder = recorder
         self._paste = paste
         self._on_status = on_status
+        self._on_dictation = on_dictation
         self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
         # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
@@ -111,6 +114,7 @@ class App:
             self._paste(text + " ")  # trennt aufeinanderfolgende Diktate
             # Datenschutz: nur die Länge loggen, nie den diktierten Text.
             log.info("Eingefügt: %d Zeichen in %.2f s", len(text), time.perf_counter() - started)
+            self._on_dictation(text, audio.size / self._recorder.sample_rate)
         except Exception:
             # Ein Fehler bei einer Aufnahme darf das Tool nicht beenden.
             log.exception("Fehler bei der Verarbeitung")

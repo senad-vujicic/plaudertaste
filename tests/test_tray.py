@@ -61,10 +61,10 @@ def test_set_toggles_does_not_emit_signals(qapp: QApplication, tmp_path: Path) -
     assert not tray.sound_action.isChecked() and not tray.overlay_action.isChecked()
 
 
-def test_double_click_opens_settings(qapp: QApplication, tmp_path: Path) -> None:
+def test_double_click_opens_window(qapp: QApplication, tmp_path: Path) -> None:
     tray = Tray("Rechte Strg", True, True, tmp_path / "config.toml", tmp_path / "app.log")
     requests: list[bool] = []
-    tray.settings_requested.connect(lambda: requests.append(True))
+    tray.open_requested.connect(lambda: requests.append(True))
 
     tray.activated.emit(QSystemTrayIcon.ActivationReason.DoubleClick)
     tray.activated.emit(QSystemTrayIcon.ActivationReason.Trigger)  # einfacher Klick: nichts
