@@ -1,7 +1,14 @@
 import pytest
 from pynput.keyboard import Key, KeyCode
 
-from plaudertaste.hotkey import PushToTalk, describe_hotkey, key_name, parse_hotkey
+from plaudertaste.hotkey import (
+    HotkeyCapture,
+    PushToTalk,
+    describe_hotkey,
+    hotkey_problem,
+    key_name,
+    parse_hotkey,
+)
 
 
 class Recorder:
@@ -160,3 +167,47 @@ def test_key_name(key: Key | KeyCode | None, expected: str | None) -> None:
 )
 def test_describe_hotkey(text: str, expected: str) -> None:
     assert describe_hotkey(text) == expected
+
+
+def test_capture_single_key() -> None:
+    captured: list[str] = []
+    capture = HotkeyCapture(captured.append)
+
+    capture.press("f9")
+    capture.press("f9")  # Tastenwiederholung
+    capture.release("f9")
+
+    assert captured == ["f9"]
+
+
+def test_capture_combination_finishes_when_all_keys_released() -> None:
+    captured: list[str] = []
+    capture = HotkeyCapture(captured.append)
+
+    capture.press("ctrl_l")
+    capture.press("cmd")
+    capture.release("cmd")
+    assert captured == []  # Strg wird noch gehalten
+    capture.release("ctrl_l")
+
+    assert captured == ["ctrl_l+cmd"]
+
+
+@pytest.mark.parametrize("text", ["ctrl_r", "f9", "ctrl_l+space", "alt+d", "ctrl+cmd"])
+def test_good_hotkeys_have_no_problem(text: str) -> None:
+    assert hotkey_problem(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "hint"),
+    [
+        ("a", "beim Schreiben gebraucht"),
+        ("space", "beim Schreiben gebraucht"),
+        ("shift_l", "beim Schreiben gebraucht"),
+        ("vk173", "nicht unterstützt"),
+    ],
+)
+def test_bad_hotkeys_are_explained(text: str, hint: str) -> None:
+    problem = hotkey_problem(text)
+
+    assert problem is not None and hint in problem

@@ -32,6 +32,7 @@ def test_default_file_is_valid_toml_with_comments() -> None:
         "language": "de",
         "model": "auto",
         "device": "auto",
+        "microphone": "",
         "sound": True,
         "overlay": True,
     }

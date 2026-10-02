@@ -20,6 +20,12 @@ _VALID_NAMES = frozenset(keyboard.Key.__members__) | frozenset(
 )
 
 
+# Tasten, die beim Schreiben gebraucht werden – allein als Hotkey würden sie ständig auslösen.
+_TYPING_KEYS = frozenset(string.ascii_lowercase + string.digits) | frozenset(
+    {"space", "enter", "backspace", "tab", "shift", "shift_l", "shift_r"}
+)
+
+
 def parse_hotkey(text: str) -> frozenset[str]:
     """Wandelt z. B. "ctrl+cmd" in {"ctrl", "cmd"} um und prüft die Tastennamen."""
     parts = [part.strip().lower() for part in text.split("+")]
@@ -52,6 +58,40 @@ _DISPLAY_NAMES: dict[str, str] = {
     "insert": "Einfg",
     "menu": "Menü",
 }
+
+
+def hotkey_problem(text: str) -> str | None:
+    """Prüft einen Hotkey für die Einstellungen. None = in Ordnung, sonst ein Hinweistext."""
+    try:
+        combo = parse_hotkey(text)
+    except ValueError:
+        return "Diese Taste wird nicht unterstützt. Bitte eine andere wählen."
+    if len(combo) == 1 and next(iter(combo)) in _TYPING_KEYS:
+        return (
+            "Diese Taste wird beim Schreiben gebraucht. Bitte eine andere wählen "
+            "(z. B. rechte Strg oder eine F-Taste) oder sie mit Strg/Alt kombinieren."
+        )
+    return None
+
+
+class HotkeyCapture:
+    """Nimmt eine Tastenkombination auf: fertig, sobald alle Tasten losgelassen sind."""
+
+    def __init__(self, on_done: Callable[[str], None]) -> None:
+        self._on_done = on_done
+        self._held: set[str] = set()
+        self._combo: list[str] = []  # in Drück-Reihenfolge
+
+    def press(self, key: str) -> None:
+        self._held.add(key)
+        if key not in self._combo:
+            self._combo.append(key)
+
+    def release(self, key: str) -> None:
+        self._held.discard(key)
+        if not self._held and self._combo:
+            combo, self._combo = self._combo, []
+            self._on_done("+".join(combo))
 
 
 def describe_hotkey(text: str) -> str:
@@ -142,22 +182,25 @@ def key_name(key: keyboard.Key | keyboard.KeyCode | None) -> str | None:
     return None
 
 
-def start_listener(push_to_talk: PushToTalk) -> keyboard.Listener:
+def start_listener(
+    on_press: Callable[[str], None], on_release: Callable[[str], None]
+) -> keyboard.Listener:
     """Startet den globalen Tastatur-Listener in einem eigenen Thread.
 
+    Die Callbacks bekommen Tastennamen (z. B. "ctrl_r") und laufen im Listener-Thread.
     Von Programmen simulierte Tastendrücke (z. B. unser eigenes Strg+V) werden ignoriert.
     """
 
-    def on_press(key: keyboard.Key | keyboard.KeyCode | None, injected: bool) -> None:
+    def handle_press(key: keyboard.Key | keyboard.KeyCode | None, injected: bool) -> None:
         name = key_name(key)
         if name and not injected:
-            push_to_talk.press(name)
+            on_press(name)
 
-    def on_release(key: keyboard.Key | keyboard.KeyCode | None, injected: bool) -> None:
+    def handle_release(key: keyboard.Key | keyboard.KeyCode | None, injected: bool) -> None:
         name = key_name(key)
         if name and not injected:
-            push_to_talk.release(name)
+            on_release(name)
 
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    listener = keyboard.Listener(on_press=handle_press, on_release=handle_release)
     listener.start()
     return listener

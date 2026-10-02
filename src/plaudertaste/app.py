@@ -58,6 +58,10 @@ class App:
         self._worker.start()
         self._publish_status()
 
+    def set_language(self, language: str | None) -> None:
+        """Sprache wechseln, ohne das Modell neu zu laden (None = automatisch erkennen)."""
+        self._transcriber.language = language
+
     def stop(self) -> None:
         """Arbeitet noch wartende Aufnahmen ab und beendet dann den Worker."""
         self._jobs.put(None)

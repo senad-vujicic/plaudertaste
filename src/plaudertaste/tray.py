@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QUrl, Signal
+from PySide6.QtCore import QPointF, QRectF, QSignalBlocker, Qt, QUrl, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -70,6 +70,7 @@ def open_file(path: Path) -> None:
 
 class Tray(QSystemTrayIcon):
     quit_requested = Signal()
+    settings_requested = Signal()
     sound_toggled = Signal(bool)
     overlay_toggled = Signal(bool)
 
@@ -83,12 +84,15 @@ class Tray(QSystemTrayIcon):
     ) -> None:
         super().__init__()
         self._hotkey_label = hotkey_label
+        self._status = Status.LOADING
         self._icons = {status: make_icon(status) for status in Status}
 
         self._menu = QMenu()
         self._status_action = QAction()
         self._status_action.setEnabled(False)
         self._menu.addAction(self._status_action)
+        self._menu.addSeparator()
+        self._menu.addAction("Einstellungen …", self.settings_requested.emit)
         self._menu.addSeparator()
         self.sound_action = QAction("Ton bei Aufnahme", checkable=True, checked=sound_enabled)
         self.sound_action.toggled.connect(self.sound_toggled)
@@ -102,10 +106,26 @@ class Tray(QSystemTrayIcon):
         self._menu.addSeparator()
         self._menu.addAction("Beenden", self.quit_requested.emit)
         self.setContextMenu(self._menu)
+        self.activated.connect(self._on_activated)
 
         self.set_status(Status.LOADING)
 
+    def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason is QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.settings_requested.emit()
+
+    def set_hotkey_label(self, label: str) -> None:
+        self._hotkey_label = label
+        self.set_status(self._status)
+
+    def set_toggles(self, sound: bool, overlay: bool) -> None:
+        """Häkchen setzen, ohne die toggled-Signale auszulösen (Änderung kam von außen)."""
+        with QSignalBlocker(self.sound_action), QSignalBlocker(self.overlay_action):
+            self.sound_action.setChecked(sound)
+            self.overlay_action.setChecked(overlay)
+
     def set_status(self, status: Status) -> None:
+        self._status = status
         self.setIcon(self._icons[status])
         text = status.value
         if status is Status.READY:

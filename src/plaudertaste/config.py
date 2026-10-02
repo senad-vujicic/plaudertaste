@@ -26,6 +26,7 @@ _COMMENTS: dict[str, str] = {
         "\"auto\" = large-v3-turbo mit NVIDIA-GPU, sonst small"
     ),
     "device": "Rechengerät: \"auto\", \"cpu\" oder \"cuda\" (NVIDIA-GPU)",
+    "microphone": "Mikrofon-Name wie in den Einstellungen angezeigt, \"\" = Windows-Standard",
     "sound": "Kurzer Ton bei Start und Ende der Aufnahme: true oder false",
     "overlay": "Anzeige unten am Bildschirm während Aufnahme und Verarbeitung: true oder false",
 }
@@ -42,6 +43,7 @@ class Config:
     language: str = "de"
     model: str = "auto"
     device: str = "auto"
+    microphone: str = ""
     sound: bool = True
     overlay: bool = True
 

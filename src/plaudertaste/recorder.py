@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 
 import numpy as np
 import sounddevice as sd
+
+from plaudertaste.devices import find_microphone
+
+log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16_000
 
@@ -17,7 +22,8 @@ class RecorderError(Exception):
 class Recorder:
     """Nimmt zwischen start() und stop() auf. Das Mikrofon ist nur währenddessen offen."""
 
-    def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
+    def __init__(self, microphone: str = "", sample_rate: int = SAMPLE_RATE) -> None:
+        self.microphone = microphone  # Gerätename, "" = Windows-Standard
         self.sample_rate = sample_rate
         self._chunks: list[np.ndarray] = []
         self._lock = threading.Lock()
@@ -34,8 +40,12 @@ class Recorder:
             return
         self._chunks = []
         self._level = 0.0
+        device = find_microphone(self.microphone)
+        if self.microphone and device is None:
+            log.warning("Mikrofon '%s' nicht gefunden – nutze Windows-Standard.", self.microphone)
         try:
             self._stream = sd.InputStream(
+                device=device,
                 samplerate=self.sample_rate,
                 channels=1,
                 dtype="float32",
