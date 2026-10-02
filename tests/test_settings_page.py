@@ -172,3 +172,13 @@ def test_new_change_hides_old_confirmation() -> None:
     page.overlay_check.setChecked(False)
 
     assert page.saved_label.isHidden()
+
+
+def test_voice_commands_switch() -> None:
+    page = make_page(Config(voice_commands=True))
+    assert page.voice_commands_check.isChecked()
+
+    page.voice_commands_check.setChecked(False)
+
+    assert page.settings().config.voice_commands is False
+    assert page.save_button.isEnabled()

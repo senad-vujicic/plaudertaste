@@ -16,6 +16,7 @@ from plaudertaste.dictionary import Dictionary
 from plaudertaste.paster import paste_text
 from plaudertaste.recorder import Recorder, RecorderError
 from plaudertaste.transcriber import Transcriber
+from plaudertaste.voice_commands import apply_voice_commands
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ class App:
         on_dictation: Callable[[str, float], None] = lambda text, seconds: None,
         on_notice: Callable[[Notice], None] = lambda notice: None,
         dictionary: Dictionary = Dictionary(),
+        voice_commands: bool = True,
     ) -> None:
         self._transcriber = transcriber
         self._recorder = recorder
@@ -78,6 +80,7 @@ class App:
         self._on_notice = on_notice
         self._dictionary = Dictionary()
         self.set_dictionary(dictionary)
+        self.voice_commands = voice_commands
         self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
         # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
@@ -153,9 +156,13 @@ class App:
             log.info("Kein Text erkannt (%s).", "Stille" if silent else "unverständlich")
             self._on_notice(SILENT_MICROPHONE if silent else NOTHING_UNDERSTOOD)
             return
+        if self.voice_commands:
+            text = apply_voice_commands(text)
         text = self._dictionary.apply(text)
+        # Leerzeichen trennt aufeinanderfolgende Diktate – nicht aber nach einem Zeilenumbruch.
+        separator = "" if text.endswith("\n") else " "
         try:
-            self._paste(text + " ")  # trennt aufeinanderfolgende Diktate
+            self._paste(text + separator)
         except Exception:
             log.exception("Einfügen fehlgeschlagen")
             self._on_notice(PASTE_FAILED)

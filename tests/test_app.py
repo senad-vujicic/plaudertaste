@@ -277,3 +277,24 @@ def test_dictionary_replacements_and_hints_are_applied() -> None:
 
     assert pasted == ["Danke und Mit freundlichen Grüßen "]
     assert transcriber.hotwords == "Plaudertaste"  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [
+        (True, ["Einkaufsliste:\nMilch ", "Brot\n"]),  # nach Umbruch kein Leerzeichen
+        (False, ["Einkaufsliste Doppelpunkt neue Zeile Milch ", "Brot neue Zeile "]),
+    ],
+)
+def test_voice_commands_can_be_switched(enabled: bool, expected: list[str]) -> None:
+    pasted: list[str] = []
+    app = App(
+        FakeTranscriber(["Einkaufsliste Doppelpunkt neue Zeile Milch", "Brot neue Zeile"]),
+        FakeRecorder(),
+        paste=pasted.append,
+        voice_commands=enabled,
+    )  # type: ignore[arg-type]
+
+    run_dictations(app, 2)
+
+    assert pasted == expected

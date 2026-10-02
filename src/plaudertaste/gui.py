@@ -240,6 +240,7 @@ class Controller(QObject):
             on_dictation=self.dictation_finished.emit,
             on_notice=self.notice.emit,
             dictionary=self._dictionary,
+            voice_commands=self._config.voice_commands,
         )
         self._app.start()
         self._activate_push_to_talk()
@@ -473,6 +474,8 @@ class Controller(QObject):
             self._overlay.set_status(Status.READY)  # ausblenden
         self.tray.set_toggles(new.sound, new.overlay)
         self._recorder.microphone = new.microphone
+        if self._app is not None:
+            self._app.voice_commands = new.voice_commands
         if new.microphone != old.microphone:
             self._set_problem("mic_missing", None)  # wird bei der nächsten Aufnahme neu geprüft
 

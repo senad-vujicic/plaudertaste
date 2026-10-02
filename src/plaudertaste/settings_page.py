@@ -105,6 +105,9 @@ class SettingsPage(QWidget):
         self.microphone_box = QComboBox()
         self.sound_check = ToggleSwitch("Ton bei Start und Ende der Aufnahme")
         self.overlay_check = ToggleSwitch("Overlay unten am Bildschirm anzeigen")
+        self.voice_commands_check = ToggleSwitch(
+            "Sprachbefehle: „neue Zeile“, „neuer Absatz“, „Komma“, „Fragezeichen“ …"
+        )
         self.autostart_check = ToggleSwitch("Mit Windows starten (still im Infobereich)")
 
         dictation = _form(
@@ -141,7 +144,9 @@ class SettingsPage(QWidget):
         cards.setContentsMargins(0, 0, 8, 0)  # Platz für die Scrollleiste
         cards.setSpacing(14)
         cards.addWidget(card(card_title("Diktat"), dictation))
-        cards.addWidget(card(card_title("Erkennung"), recognition))
+        cards.addWidget(
+            card(card_title("Erkennung"), recognition, self.voice_commands_check)
+        )
         cards.addWidget(
             card(card_title("Verhalten"), self.sound_check, self.overlay_check, self.autostart_check)
         )
@@ -160,7 +165,12 @@ class SettingsPage(QWidget):
         self.model_box.currentIndexChanged.connect(self._update_model_hint)
         for box in (self.model_box, self.language_box, self.microphone_box):
             box.currentIndexChanged.connect(self._on_changed)
-        for switch in (self.sound_check, self.overlay_check, self.autostart_check):
+        for switch in (
+            self.sound_check,
+            self.overlay_check,
+            self.autostart_check,
+            self.voice_commands_check,
+        ):
             switch.toggled.connect(self._on_changed)
         self._on_changed()
 
@@ -200,6 +210,7 @@ class SettingsPage(QWidget):
         _select(self.microphone_box, config.microphone)
         self.sound_check.setChecked(config.sound)
         self.overlay_check.setChecked(config.overlay)
+        self.voice_commands_check.setChecked(config.voice_commands)
         self.autostart_check.setChecked(self._saved.autostart)
         self._update_model_hint()
         self._on_changed()
@@ -213,6 +224,7 @@ class SettingsPage(QWidget):
             microphone=self.microphone_box.currentData(),
             sound=self.sound_check.isChecked(),
             overlay=self.overlay_check.isChecked(),
+            voice_commands=self.voice_commands_check.isChecked(),
         )
         return Settings(config=config, autostart=self.autostart_check.isChecked())
 

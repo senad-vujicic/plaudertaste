@@ -321,3 +321,9 @@ def test_broken_dictionary_file_is_kept_as_backup(
     assert (tmp_path / "woerterbuch.defekt.toml").read_text(encoding="utf-8") == "terms = [kaputt"
     assert "Wörterbuch-Datei fehlerhaft" in controller.window.start_page.problems_label.text()
     controller.window.deleteLater()
+
+
+def test_voice_commands_setting_reaches_running_app(controller: gui.Controller) -> None:
+    controller.apply_settings(Settings(replace(Config(), voice_commands=False), autostart=False))
+
+    assert controller._app.voice_commands is False  # type: ignore[union-attr]

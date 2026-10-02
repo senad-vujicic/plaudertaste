@@ -34,7 +34,9 @@ def paste_text(
     bleibt der diktierte Text darin – als Backup zum erneuten Einfügen.
     """
     previous = clipboard.paste()
-    clipboard.copy(text)
+    # Windows-Standard für Zeilenumbrüche in der Zwischenablage ist \r\n – ältere
+    # Programme und manche Office-Felder verstehen ein einzelnes \n sonst nicht.
+    clipboard.copy(text.replace("\r\n", "\n").replace("\n", "\r\n"))
     time.sleep(settle_delay)  # Windows braucht einen Moment, bis die Zwischenablage gesetzt ist
     send_paste()
     if previous:

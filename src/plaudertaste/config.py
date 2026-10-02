@@ -29,6 +29,10 @@ _COMMENTS: dict[str, str] = {
     "microphone": "Mikrofon-Name wie in den Einstellungen angezeigt, \"\" = Windows-Standard",
     "sound": "Kurzer Ton bei Start und Ende der Aufnahme: true oder false",
     "overlay": "Anzeige unten am Bildschirm während Aufnahme und Verarbeitung: true oder false",
+    "voice_commands": (
+        "Sprachbefehle \"neue Zeile\", \"neuer Absatz\", \"Komma\", \"Fragezeichen\", "
+        "\"Ausrufezeichen\", \"Doppelpunkt\": true oder false"
+    ),
 }
 _TYPE_HINTS = {str: "ein Text in Anführungszeichen", bool: "true oder false"}
 
@@ -46,6 +50,7 @@ class Config:
     microphone: str = ""
     sound: bool = True
     overlay: bool = True
+    voice_commands: bool = True
 
 
 def render_config(config: Config) -> str:

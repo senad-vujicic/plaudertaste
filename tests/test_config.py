@@ -35,6 +35,7 @@ def test_default_file_is_valid_toml_with_comments() -> None:
         "microphone": "",
         "sound": True,
         "overlay": True,
+        "voice_commands": True,
     }
 
 

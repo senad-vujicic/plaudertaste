@@ -44,3 +44,11 @@ def test_keeps_dictated_text_when_clipboard_was_empty() -> None:
     assert pasted == ["Hallo Welt"]
     assert clipboard.content == "Hallo Welt"
     assert clipboard.history == ["Hallo Welt"]
+
+
+def test_line_breaks_use_windows_format() -> None:
+    clipboard = FakeClipboard("")
+
+    pasted = run(clipboard, "Einkaufsliste:\nMilch\r\nBrot\n\n")
+
+    assert pasted == ["Einkaufsliste:\r\nMilch\r\nBrot\r\n\r\n"]  # nie doppelt \r\r\n
