@@ -6,7 +6,10 @@ Aufruf (im venv, mit `pip install -e .[gpu,build]`):
 
 from __future__ import annotations
 
+import os
+import shutil
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,6 +17,8 @@ import PyInstaller.__main__
 from PySide6.QtCore import QBuffer, QIODevice, QSize
 from PySide6.QtGui import QGuiApplication
 
+from plaudertaste import __version__
+from plaudertaste.models import MODELS
 from plaudertaste.tray import make_app_icon
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +47,24 @@ def write_ico(path: Path, images: dict[int, bytes]) -> None:
     path.write_bytes(header + entries + data)
 
 
+def find_inno_compiler() -> Path | None:
+    """ISCC.exe aus dem PATH oder den üblichen Installationsorten von Inno Setup 6."""
+    found = shutil.which("ISCC")
+    if found:
+        return Path(found)
+    for variable, sub in (
+        ("LOCALAPPDATA", "Programs"),
+        ("ProgramFiles(x86)", ""),
+        ("ProgramFiles", ""),
+    ):
+        base = os.environ.get(variable)
+        if base:
+            candidate = Path(base, sub, "Inno Setup 6", "ISCC.exe")
+            if candidate.exists():
+                return candidate
+    return None
+
+
 def main() -> int:
     app = QGuiApplication(sys.argv[:1])  # nötig, damit Qt das Icon zeichnen kann
     BUILD_DIR.mkdir(exist_ok=True)
@@ -58,6 +81,24 @@ def main() -> int:
             "--workpath",
             str(BUILD_DIR / "pyinstaller"),
         ]
+    )
+
+    compiler = find_inno_compiler()
+    if compiler is None:
+        print(
+            "Inno Setup 6 nicht gefunden – Installer übersprungen. "
+            "Installieren mit: winget install JRSoftware.InnoSetup"
+        )
+        return 1
+    repos = ";".join(model.repo_id for model in MODELS)
+    subprocess.run(
+        [
+            str(compiler),
+            f"/DAppVersion={__version__}",
+            f"/DModelRepos={repos}",
+            str(ROOT / "packaging" / "plaudertaste.iss"),
+        ],
+        check=True,
     )
     return 0
 
