@@ -61,6 +61,18 @@ def test_counter_reports_once_per_percent_and_never_above_total() -> None:
     assert reports[-1] == (1000, 1000)
 
 
+@pytest.mark.parametrize("downloaded", [700, 5000])  # kleiner bzw. größer als geschätzt
+def test_finish_reports_100_percent_exactly_once(downloaded: int) -> None:
+    reports: list[tuple[int, int]] = []
+    counter = ProgressCounter(1000, lambda done, total: reports.append((done, total)))
+
+    counter.add(downloaded)
+    counter.finish()
+
+    assert reports.count((1000, 1000)) == 1
+    assert reports[-1] == (1000, 1000)
+
+
 def test_only_download_bytes_are_counted() -> None:
     sink = Sink()
     bar_class = counting_tqdm(sink)

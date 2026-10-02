@@ -51,3 +51,15 @@ def test_crash_in_thread_is_logged(tmp_path: Path) -> None:
     text = log_file.read_text(encoding="utf-8")
     assert "Unerwarteter Fehler im Thread worker" in text
     assert "RuntimeError: Absturz im Hintergrund" in text
+
+
+def test_console_without_terminal_writes_only_to_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "stderr", None)  # so startet die gebaute Fenster-App
+
+    log_file = setup_logging(tmp_path, console=True)
+    logging.getLogger("plaudertaste.test").info("ohne Konsole")
+
+    assert len(logging.getLogger().handlers) == 1
+    assert "ohne Konsole" in log_file.read_text(encoding="utf-8")

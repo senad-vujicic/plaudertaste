@@ -32,7 +32,8 @@ def setup_logging(directory: Path, console: bool) -> Path:
     )
     handlers: list[logging.Handler] = [file_handler]
 
-    if console:
+    # Die gebaute Fenster-App hat keine Konsole (sys.stderr ist None) – dann nur die Datei.
+    if console and sys.stderr is not None:
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", "%H:%M:%S"))
         handlers.append(console_handler)

@@ -1,6 +1,10 @@
+import os
+import sys
+from pathlib import Path
+
 import pytest
 
-from plaudertaste.transcriber import ModelChoice, resolve_model
+from plaudertaste.transcriber import ModelChoice, register_nvidia_dlls, resolve_model
 
 
 @pytest.mark.parametrize(
@@ -16,3 +20,16 @@ from plaudertaste.transcriber import ModelChoice, resolve_model
 )
 def test_resolve_model(model: str, device: str, cuda_devices: int, expected: ModelChoice) -> None:
     assert resolve_model(model, device, cuda_devices) == expected
+
+
+def test_frozen_app_finds_bundled_cublas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = tmp_path / "nvidia" / "cublas" / "bin"
+    bin_dir.mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setenv("PATH", r"C:\Windows")
+
+    register_nvidia_dlls()
+    register_nvidia_dlls()  # z. B. nach einem Modellwechsel – PATH darf nicht wachsen
+
+    assert os.environ["PATH"].split(os.pathsep) == [str(bin_dir), r"C:\Windows"]

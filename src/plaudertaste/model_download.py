@@ -72,7 +72,10 @@ class ProgressCounter:
 
     def finish(self) -> None:
         with self._lock:
+            if self._last_percent == 100:  # schon gemeldet (Modell größer als geschätzt)
+                return
             self._done = self.total
+            self._last_percent = 100
         self._on_progress(self.total, self.total)
 
 

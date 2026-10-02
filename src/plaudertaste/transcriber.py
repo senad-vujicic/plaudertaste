@@ -40,21 +40,28 @@ def resolve_model(model_setting: str, device_setting: str, cuda_devices: int) ->
     return ModelChoice(name=name, device=device, compute_type=COMPUTE_TYPE[device])
 
 
+def _nvidia_roots() -> list[Path]:
+    """Ordner, unter denen die NVIDIA-Pakete liegen (je Paket ein Unterordner mit bin/)."""
+    if getattr(sys, "frozen", False):  # gebaute .exe: mitgeliefert im Programmordner
+        return [Path(sys._MEIPASS) / "nvidia"]  # type: ignore[attr-defined]
+    try:
+        import nvidia  # Namespace-Paket aus nvidia-cublas-cu12
+    except ImportError:
+        return []
+    return [Path(root) for root in nvidia.__path__]
+
+
 def register_nvidia_dlls() -> None:
-    """Macht die per pip installierten NVIDIA-DLLs (cuBLAS) für Windows auffindbar.
+    """Macht die NVIDIA-DLLs (cuBLAS) für Windows auffindbar.
 
     ctranslate2 lädt cuBLAS erst zur Laufzeit nach und sucht dabei nur im PATH
     (os.add_dll_directory reicht nachweislich nicht).
     """
     if sys.platform != "win32":
         return
-    try:
-        import nvidia  # Namespace-Paket aus nvidia-cublas-cu12
-    except ImportError:
-        return
     path_entries = os.environ["PATH"].split(os.pathsep)
-    for root in nvidia.__path__:
-        for bin_dir in Path(root).glob("*/bin"):
+    for root in _nvidia_roots():
+        for bin_dir in root.glob("*/bin"):
             if str(bin_dir) not in path_entries:  # bei jedem Modellwechsel nur einmal
                 path_entries.insert(0, str(bin_dir))
     os.environ["PATH"] = os.pathsep.join(path_entries)

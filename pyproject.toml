@@ -28,6 +28,10 @@ dev = [
     "pytest>=8",
     "ruff>=0.16",
 ]
+# Nur zum Bauen der Windows-Version (siehe packaging/)
+build = [
+    "pyinstaller>=6.22",
+]
 
 [project.scripts]
 plaudertaste = "plaudertaste.__main__:main"
