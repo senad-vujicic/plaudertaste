@@ -21,6 +21,7 @@ from huggingface_hub import snapshot_download
 from tqdm.auto import tqdm
 
 from plaudertaste.catalog import model_info
+from plaudertaste.network import OfflineError, guard
 
 # Dieselbe Dateiauswahl wie faster_whisper.download_model
 ALLOW_PATTERNS = [
@@ -179,7 +180,16 @@ def ensure_model(
     cached = is_cached(name)
     if cached is not None:
         return cached
+    if guard.offline:
+        raise OfflineError(
+            f"Das Modell „{name}“ ist nicht heruntergeladen, und im Offline-Modus sind "
+            "keine Downloads möglich. Schalte den Offline-Modus kurz aus oder wähle ein "
+            "heruntergeladenes Modell."
+        )
     info = model_info(name)
+    # Der Download läuft in einem eigenen Prozess, den der Wächter nicht sieht – deshalb
+    # hier selbst ins Netzwerk-Protokoll eintragen.
+    guard.record("huggingface.co", "Modell-Download")
     report = on_progress or (lambda model, done, total: None)
     counter = ProgressCounter(info.size_mb * 1_000_000, lambda done, total: report(name, done, total))
     path = download_in_process(info.repo_id, counter, cancel or threading.Event())

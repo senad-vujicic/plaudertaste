@@ -133,3 +133,26 @@ def test_missing_model_is_downloaded_with_progress(monkeypatch: pytest.MonkeyPat
 
     assert path == "C:/cache/Systran/faster-whisper-tiny"
     assert reports[-1] == ("tiny", 78_000_000, 78_000_000)
+
+
+def test_offline_mode_refuses_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plaudertaste.network import OfflineError, guard
+
+    monkeypatch.setattr(model_download, "is_cached", lambda name: None)
+    monkeypatch.setattr(guard, "offline", True)
+
+    with pytest.raises(OfflineError, match="Offline-Modus"):
+        model_download.ensure_model("tiny")
+
+
+def test_download_is_recorded_in_network_protocol(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plaudertaste.network import NetworkGuard
+
+    fresh = NetworkGuard()
+    monkeypatch.setattr(model_download, "guard", fresh)
+    monkeypatch.setattr(model_download, "is_cached", lambda name: None)
+    monkeypatch.setattr(model_download, "download_in_process", lambda repo, sink, cancel: "C:/x")
+
+    model_download.ensure_model("tiny")
+
+    assert [(c.host, c.purpose) for c in fresh.connections] == [("huggingface.co", "Modell-Download")]

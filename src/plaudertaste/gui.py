@@ -37,6 +37,7 @@ from plaudertaste.hotkey import (
 )
 from plaudertaste.main_window import MainWindow, Page
 from plaudertaste.model_download import DownloadCancelled, DownloadFailed, is_model_downloaded
+from plaudertaste.network import OfflineError, guard
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
 from plaudertaste.settings_page import DEFAULT_MICROPHONE_LABEL, Settings, SettingsPage
@@ -85,6 +86,7 @@ class Controller(QObject):
     hotkey_captured = Signal(str)  # aus dem Tastatur-Thread
     hands_free_started = Signal()  # aus dem Tastatur-Thread
     update_available = Signal(object)  # Update – aus dem Update-Thread
+    connection_made = Signal(object)  # Connection – aus beliebigen Threads
 
     def __init__(self, config: Config, log_file: Path) -> None:
         super().__init__()
@@ -144,6 +146,9 @@ class Controller(QObject):
         self.hotkey_captured.connect(self._on_hotkey_captured)
         self.hands_free_started.connect(self._on_hands_free_started)
         self.update_available.connect(self._on_update_available)
+        self.connection_made.connect(lambda _: self._refresh_connections())
+        guard.subscribe(self.connection_made.emit)
+        guard.offline = config.offline_mode
         # Notstopp, falls eine Freihand-Aufnahme vergessen wird
         self._hands_free_timer = QTimer(self, singleShot=True, interval=HANDS_FREE_LIMIT_MS)
         self._hands_free_timer.timeout.connect(self._stop_forgotten_hands_free)
@@ -160,8 +165,11 @@ class Controller(QObject):
         self._refresh_autostart_entry()
         self._listener = start_listener(self._on_key_press, self._on_key_release, self._swallow)
         self._load_model_in_background()
-        if self._config.check_updates:
+        if self._config.check_updates and not self._config.offline_mode:
             threading.Thread(target=self._check_for_update, name="update-check", daemon=True).start()
+
+    def _refresh_connections(self) -> None:
+        self.settings_page.set_connections(guard.connections)
 
     # --- Update-Hinweis ---
 
@@ -237,6 +245,10 @@ class Controller(QObject):
             )
         except DownloadCancelled:
             self.model_cancelled.emit()
+            return
+        except OfflineError as exc:
+            log.error("%s", exc)
+            self.model_failed.emit(str(exc), "Offline-Modus aktiv")
             return
         except DownloadFailed as exc:
             log.error("Download fehlgeschlagen: %s", exc)
@@ -493,6 +505,7 @@ class Controller(QObject):
         self.settings_page.load(
             self._config, autostart.is_enabled(), list_microphones(), downloaded
         )
+        self._refresh_connections()
 
     def _start_hotkey_capture(self) -> None:
         # Diktieren pausieren, sonst würde der gedrückte Hotkey gleich eine Aufnahme starten.
@@ -530,6 +543,9 @@ class Controller(QObject):
             self._overlay.set_status(Status.READY)  # ausblenden
         self.tray.set_toggles(new.sound, new.overlay)
         self._recorder.microphone = new.microphone
+        if new.offline_mode != old.offline_mode:
+            guard.offline = new.offline_mode
+            log.info("Offline-Modus %s.", "an" if new.offline_mode else "aus")
         if self._app is not None:
             self._app.voice_commands = new.voice_commands
             self._app.remove_fillers = new.remove_fillers
@@ -566,6 +582,7 @@ class Controller(QObject):
 
 
 def run(log_file: Path, show_window: bool = True) -> int:
+    guard.install()  # als Allererstes: ab jetzt läuft jede Verbindung über den Wächter
     if sys.platform == "win32":  # muss vor dem ersten Fenster passieren
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     qapp = QApplication(sys.argv)

@@ -198,3 +198,36 @@ def test_update_check_switch() -> None:
     page.updates_check.setChecked(False)
 
     assert page.settings().config.check_updates is False
+
+
+def test_offline_mode_blocks_models_that_are_not_downloaded() -> None:
+    page = make_page()  # heruntergeladen: nur "small"
+    page.model_box.setCurrentIndex(page.model_box.findData("medium"))
+
+    page.offline_check.setChecked(True)
+
+    assert not page.save_button.isEnabled()
+    assert "Offline-Modus" in page.model_hint.text()
+    page.model_box.setCurrentIndex(page.model_box.findData("small"))
+    assert page.save_button.isEnabled()
+
+
+def test_network_protocol_lists_connections() -> None:
+    from plaudertaste.network import Connection
+
+    page = make_page()
+    assert "Keine Verbindungen" in page.network_label.text()
+
+    page.set_connections([Connection("api.github.com", "Update-Prüfung", blocked=True)])
+
+    assert "api.github.com · Update-Prüfung" in page.network_label.text()
+    assert "blockiert" in page.network_label.text()
+
+
+def test_update_switch_is_disabled_while_offline() -> None:
+    page = make_page()
+
+    page.offline_check.setChecked(True)
+    assert not page.updates_check.isEnabled()
+    page.offline_check.setChecked(False)
+    assert page.updates_check.isEnabled()

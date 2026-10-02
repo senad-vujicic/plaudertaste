@@ -34,6 +34,10 @@ _COMMENTS: dict[str, str] = {
         "\"Ausrufezeichen\", \"Doppelpunkt\": true oder false"
     ),
     "remove_fillers": "Verzögerungslaute wie \"äh\", \"ähm\", \"hm\" entfernen: true oder false",
+    "offline_mode": (
+        "Offline-Modus: Plaudertaste blockiert jede Internetverbindung (keine Downloads, "
+        "keine Update-Prüfung): true oder false"
+    ),
     "check_updates": (
         "Beim Start einmal auf GitHub nach einer neuen Version fragen (nur diese eine "
         "Anfrage, kein Text, keine Sprache): true oder false"
@@ -58,6 +62,7 @@ class Config:
     voice_commands: bool = True
     remove_fillers: bool = True
     check_updates: bool = True
+    offline_mode: bool = False
 
 
 def render_config(config: Config) -> str:

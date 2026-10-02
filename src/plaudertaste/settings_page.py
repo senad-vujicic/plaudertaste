@@ -24,12 +24,14 @@ from PySide6.QtWidgets import (
 from plaudertaste.catalog import AUTO, MODELS, format_size, language_options, model_label
 from plaudertaste.config import Config
 from plaudertaste.hotkey import describe_hotkey, hotkey_problem
+from plaudertaste.network import Connection
 from plaudertaste.ui import (
     SavedIndicator,
     ToggleSwitch,
     card,
     card_title,
     hint_label,
+    muted_label,
     page_title,
     set_hint,
 )
@@ -111,6 +113,12 @@ class SettingsPage(QWidget):
         self.fillers_check = ToggleSwitch("Verzögerungslaute entfernen: „äh“, „ähm“, „hm“ …")
         self.autostart_check = ToggleSwitch("Mit Windows starten (still im Infobereich)")
         self.updates_check = ToggleSwitch("Beim Start nach einer neuen Version suchen (GitHub)")
+        self.offline_check = ToggleSwitch("Offline-Modus: jede Internetverbindung blockieren")
+        self.offline_check.toggled.connect(self._on_offline_toggled)
+        self.network_label = QLabel()
+        self.network_label.setWordWrap(True)
+        self.network_label.setTextFormat(Qt.TextFormat.RichText)
+        self.set_connections([])
 
         dictation = _form(
             ("Hotkey (halten zum Sprechen)", _with_hint(self.hotkey_button, self.hotkey_hint)),
@@ -163,6 +171,18 @@ class SettingsPage(QWidget):
                 self.updates_check,
             )
         )
+        cards.addWidget(
+            card(
+                card_title("Datenschutz"),
+                self.offline_check,
+                muted_label(
+                    "Sprache und Text verlassen nie diesen Rechner. Ins Internet geht "
+                    "Plaudertaste nur für Modell-Downloads und die Update-Prüfung – im "
+                    "Offline-Modus gar nicht. Hier siehst du jede Verbindung dieser Sitzung:"
+                ),
+                self.network_label,
+            )
+        )
         cards.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -185,6 +205,7 @@ class SettingsPage(QWidget):
             self.voice_commands_check,
             self.fillers_check,
             self.updates_check,
+            self.offline_check,
         ):
             switch.toggled.connect(self._on_changed)
         self._on_changed()
@@ -213,6 +234,7 @@ class SettingsPage(QWidget):
             self.microphone_box.addItem(f"{config.microphone} (nicht verbunden)", config.microphone)
         self.microphone_box.blockSignals(False)
         self.reset()
+        self._on_offline_toggled()
 
     def reset(self) -> None:
         """Alle Felder auf den gespeicherten Stand zurücksetzen ("Verwerfen")."""
@@ -228,6 +250,7 @@ class SettingsPage(QWidget):
         self.voice_commands_check.setChecked(config.voice_commands)
         self.fillers_check.setChecked(config.remove_fillers)
         self.updates_check.setChecked(config.check_updates)
+        self.offline_check.setChecked(config.offline_mode)
         self.autostart_check.setChecked(self._saved.autostart)
         self._update_model_hint()
         self._on_changed()
@@ -244,11 +267,41 @@ class SettingsPage(QWidget):
             voice_commands=self.voice_commands_check.isChecked(),
             remove_fillers=self.fillers_check.isChecked(),
             check_updates=self.updates_check.isChecked(),
+            offline_mode=self.offline_check.isChecked(),
         )
         return Settings(config=config, autostart=self.autostart_check.isChecked())
 
     def has_changes(self) -> bool:
         return self.settings() != self._saved
+
+    def set_connections(self, connections: list[Connection]) -> None:
+        if not connections:
+            self.network_label.setText("✓ Keine Verbindungen in dieser Sitzung.")
+            return
+        rows = [
+            f"{c.time:%H:%M} · {c.host} · {c.purpose}"
+            + (" · <span style='color:#f0a63a'>blockiert</span>" if c.blocked else "")
+            for c in connections
+        ]
+        self.network_label.setText("<br>".join(rows))
+
+    def _offline_blocks_model(self) -> bool:
+        name = self.model_box.currentData()
+        return self.offline_check.isChecked() and name != AUTO and name not in self._downloaded
+
+    def _on_offline_toggled(self) -> None:
+        # Offline gibt es keine Update-Prüfung – der Schalter wäre sonst irreführend.
+        self.updates_check.setEnabled(not self.offline_check.isChecked())
+        # Nicht heruntergeladene Modelle sind offline nicht wählbar.
+        model = self.model_box.model()
+        for row in range(self.model_box.count()):
+            name = self.model_box.itemData(row)
+            blocked = self.offline_check.isChecked() and name != AUTO and name not in self._downloaded
+            item = model.item(row)  # type: ignore[attr-defined]
+            if item is not None:
+                item.setEnabled(not blocked)
+        self._update_model_hint()
+        self._on_changed()
 
     def show_saved(self) -> None:
         """Bestätigung nach erfolgreichem Speichern: grün einblenden, dann verblassen."""
@@ -271,7 +324,7 @@ class SettingsPage(QWidget):
 
     def _on_changed(self) -> None:
         changed = self.has_changes()
-        self.save_button.setEnabled(changed)
+        self.save_button.setEnabled(changed and not self._offline_blocks_model())
         self.discard_button.setEnabled(changed)
         if changed:  # eine alte Bestätigung passt nicht mehr zum aktuellen Stand
             self.saved_label.clear()
@@ -289,6 +342,8 @@ class SettingsPage(QWidget):
         text = ""
         if info is not None and name not in self._downloaded:
             text = f"Wird beim Speichern heruntergeladen ({format_size(info.size_mb)})."
+            if self.offline_check.isChecked():
+                text = "Im Offline-Modus nicht verfügbar – dieses Modell ist nicht heruntergeladen."
         set_hint(self.model_hint, text)
 
 

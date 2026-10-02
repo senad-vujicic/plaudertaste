@@ -9,6 +9,7 @@ from plaudertaste import autostart, gui, paths
 from plaudertaste.config import Config, load_config
 from plaudertaste.hotkey import HotkeyCapture
 from plaudertaste.main_window import Page
+from plaudertaste.network import NetworkGuard
 from plaudertaste.settings_page import Settings
 from plaudertaste.sounds import TonePlayer
 
@@ -44,6 +45,8 @@ def controller(
     monkeypatch.setattr(autostart, "set_enabled", lambda value: registry.update(enabled=value))
     monkeypatch.setattr(gui, "list_microphones", lambda: ["Headset (USB)"])
     monkeypatch.setattr(gui, "is_model_downloaded", lambda name: name == "small")
+    # Eigener Netzwerk-Wächter pro Test: Anmeldungen gelöschter Controller bleiben nicht hängen.
+    monkeypatch.setattr(gui, "guard", NetworkGuard())
 
     controller = gui.Controller(Config(), tmp_path / "app.log")
     controller._tones = TonePlayer(enabled=True, play=lambda tone: None)  # Tests bleiben stumm
@@ -318,6 +321,7 @@ def test_broken_dictionary_file_is_kept_as_backup(
     monkeypatch.setattr(paths, "stats_file", lambda: tmp_path / "stats.json")
     monkeypatch.setattr(paths, "dictionary_file", lambda: tmp_path / "woerterbuch.toml")
     monkeypatch.setattr(gui.QSystemTrayIcon, "showMessage", lambda *args: None)
+    monkeypatch.setattr(gui, "guard", NetworkGuard())
     (tmp_path / "woerterbuch.toml").write_text("terms = [kaputt", encoding="utf-8")
 
     controller = gui.Controller(Config(), tmp_path / "app.log")
@@ -369,3 +373,18 @@ def test_update_is_shown_on_start_page(
     page = controller.window.start_page
     assert not page.update_card.isHidden()
     assert "0.2.0" in page.update_label.text()
+
+
+def test_offline_setting_switches_guard(controller: gui.Controller) -> None:
+    controller.apply_settings(Settings(replace(Config(), offline_mode=True), autostart=False))
+    assert gui.guard.offline is True
+
+    controller.apply_settings(Settings(Config(), autostart=False))
+    assert gui.guard.offline is False
+
+
+def test_connections_appear_in_settings(controller: gui.Controller) -> None:
+    gui.guard.record("api.github.com")  # wie beim echten Update-Check
+
+    label = controller.settings_page.network_label.text()
+    assert "api.github.com · Update-Prüfung" in label
