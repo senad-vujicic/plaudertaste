@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from huggingface_hub import snapshot_download
 from tqdm.auto import tqdm
 
-from plaudertaste.catalog import model_info
+from plaudertaste.models import model_info
 from plaudertaste.network import OfflineError, guard
 
 # Dieselbe Dateiauswahl wie faster_whisper.download_model

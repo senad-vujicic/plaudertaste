@@ -57,3 +57,34 @@ def test_fallback_flag_when_chosen_microphone_is_missing(monkeypatch: pytest.Mon
 
     assert missing.fell_back_to_default is True
     assert default.fell_back_to_default is False  # Windows-Standard war gewollt
+
+
+def test_parallel_stop_closes_stream_only_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from plaudertaste import recorder as recorder_module
+
+    closes: list[int] = []
+
+    class FakeStream:
+        def __init__(self, **kwargs: object) -> None: ...
+        def start(self) -> None: ...
+
+        def stop(self) -> None:
+            threading.Event().wait(0.05)  # Schließen dauert ein bisschen
+
+        def close(self) -> None:
+            closes.append(1)
+
+    monkeypatch.setattr(recorder_module.sd, "RawInputStream", FakeStream)
+    monkeypatch.setattr(recorder_module, "find_microphone", lambda name: None)
+    recorder = Recorder()
+    recorder.start()
+
+    threads = [threading.Thread(target=recorder.stop) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert closes == [1]

@@ -1,14 +1,8 @@
 import pytest
 from faster_whisper import available_models
 
-from plaudertaste.catalog import (
-    MODELS,
-    ModelInfo,
-    format_size,
-    language_name,
-    language_options,
-    model_label,
-)
+from plaudertaste.catalog import format_size, language_name, language_options, model_label
+from plaudertaste.models import MODELS, ModelInfo
 from plaudertaste.config import VALID_MODELS
 
 pytestmark = pytest.mark.usefixtures("qapp")
@@ -17,7 +11,7 @@ pytestmark = pytest.mark.usefixtures("qapp")
 def test_language_list_starts_with_auto_german_english() -> None:
     options = language_options()
 
-    assert options[:3] == [("auto", "Automatisch erkennen"), ("de", "Deutsch"), ("en", "English")]
+    assert options[:3] == (("auto", "Automatisch erkennen"), ("de", "Deutsch"), ("en", "English"))
 
 
 def test_language_list_covers_all_whisper_languages() -> None:

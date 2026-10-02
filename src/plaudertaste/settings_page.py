@@ -16,15 +16,16 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from plaudertaste.catalog import AUTO, MODELS, format_size, language_options, model_label
-from plaudertaste.config import Config
+from plaudertaste.catalog import AUTO_MODEL_LABEL, format_size, language_options, model_label
+from plaudertaste.config import AUTO, Config
 from plaudertaste.hotkey import describe_hotkey, hotkey_problem
+from plaudertaste.models import MODELS
 from plaudertaste.network import Connection
+from plaudertaste import theme
 from plaudertaste.ui import (
     SavedIndicator,
     ToggleSwitch,
@@ -33,10 +34,10 @@ from plaudertaste.ui import (
     hint_label,
     muted_label,
     page_title,
+    scrolling_column,
     set_hint,
 )
 
-AUTO_MODEL_LABEL = "Automatisch – large-v3-turbo mit NVIDIA-GPU, sonst small"
 DEFAULT_MICROPHONE_LABEL = "Windows-Standard"
 WAITING_TEXT = "Taste(n) drücken und loslassen …"
 LABEL_WIDTH = 210  # gleiche Breite in allen Karten, damit die Felder bündig stehen
@@ -148,30 +149,28 @@ class SettingsPage(QWidget):
             box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             box.setMinimumContentsLength(20)
 
+        # Config-Feld -> Schalter: eine Tabelle statt Einzelzeilen beim Laden, Auslesen und
+        # Verbinden. Ein neuer Schalter braucht nur noch einen Eintrag hier.
+        self._switches: dict[str, ToggleSwitch] = {
+            "sound": self.sound_check,
+            "overlay": self.overlay_check,
+            "voice_commands": self.voice_commands_check,
+            "remove_fillers": self.fillers_check,
+            "check_updates": self.updates_check,
+            "offline_mode": self.offline_check,
+        }
+
         # Nur die Karten scrollen – Speichern/Verwerfen bleiben immer sichtbar.
-        content = QWidget()
-        cards = QVBoxLayout(content)
-        cards.setContentsMargins(0, 0, 8, 0)  # Platz für die Scrollleiste
-        cards.setSpacing(14)
-        cards.addWidget(card(card_title("Diktat"), dictation))
-        cards.addWidget(
-            card(
-                card_title("Erkennung"),
-                recognition,
-                self.voice_commands_check,
-                self.fillers_check,
-            )
-        )
-        cards.addWidget(
+        cards = scrolling_column(
+            card(card_title("Diktat"), dictation),
+            card(card_title("Erkennung"), recognition, self.voice_commands_check, self.fillers_check),
             card(
                 card_title("Verhalten"),
                 self.sound_check,
                 self.overlay_check,
                 self.autostart_check,
                 self.updates_check,
-            )
-        )
-        cards.addWidget(
+            ),
             card(
                 card_title("Datenschutz"),
                 self.offline_check,
@@ -181,32 +180,19 @@ class SettingsPage(QWidget):
                     "Offline-Modus gar nicht. Hier siehst du jede Verbindung dieser Sitzung:"
                 ),
                 self.network_label,
-            )
+            ),
         )
-        cards.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidget(content)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.addWidget(page_title("Einstellungen"))
-        layout.addWidget(scroll, 1)
+        layout.addWidget(cards, 1)
         layout.addLayout(buttons)
 
         self.model_box.currentIndexChanged.connect(self._update_model_hint)
         for box in (self.model_box, self.language_box, self.microphone_box):
             box.currentIndexChanged.connect(self._on_changed)
-        for switch in (
-            self.sound_check,
-            self.overlay_check,
-            self.autostart_check,
-            self.voice_commands_check,
-            self.fillers_check,
-            self.updates_check,
-            self.offline_check,
-        ):
+        for switch in (*self._switches.values(), self.autostart_check):
             switch.toggled.connect(self._on_changed)
         self._on_changed()
 
@@ -245,12 +231,8 @@ class SettingsPage(QWidget):
         _select(self.model_box, config.model)
         _select(self.language_box, config.language)
         _select(self.microphone_box, config.microphone)
-        self.sound_check.setChecked(config.sound)
-        self.overlay_check.setChecked(config.overlay)
-        self.voice_commands_check.setChecked(config.voice_commands)
-        self.fillers_check.setChecked(config.remove_fillers)
-        self.updates_check.setChecked(config.check_updates)
-        self.offline_check.setChecked(config.offline_mode)
+        for field, switch in self._switches.items():
+            switch.setChecked(getattr(config, field))
         self.autostart_check.setChecked(self._saved.autostart)
         self._update_model_hint()
         self._on_changed()
@@ -262,12 +244,7 @@ class SettingsPage(QWidget):
             model=self.model_box.currentData(),
             language=self.language_box.currentData(),
             microphone=self.microphone_box.currentData(),
-            sound=self.sound_check.isChecked(),
-            overlay=self.overlay_check.isChecked(),
-            voice_commands=self.voice_commands_check.isChecked(),
-            remove_fillers=self.fillers_check.isChecked(),
-            check_updates=self.updates_check.isChecked(),
-            offline_mode=self.offline_check.isChecked(),
+            **{field: switch.isChecked() for field, switch in self._switches.items()},
         )
         return Settings(config=config, autostart=self.autostart_check.isChecked())
 
@@ -280,26 +257,27 @@ class SettingsPage(QWidget):
             return
         rows = [
             f"{c.time:%H:%M} · {c.host} · {c.purpose}"
-            + (" · <span style='color:#f0a63a'>blockiert</span>" if c.blocked else "")
+            + (f" · <span style='color:{theme.HINT}'>blockiert</span>" if c.blocked else "")
             for c in connections
         ]
         self.network_label.setText("<br>".join(rows))
 
-    def _offline_blocks_model(self) -> bool:
-        name = self.model_box.currentData()
-        return self.offline_check.isChecked() and name != AUTO and name not in self._downloaded
+    def _blocked_offline(self, model_name: str) -> bool:
+        """Offline ist ein noch nicht heruntergeladenes Modell nicht wählbar."""
+        return (
+            self.offline_check.isChecked()
+            and model_name != AUTO
+            and model_name not in self._downloaded
+        )
 
     def _on_offline_toggled(self) -> None:
         # Offline gibt es keine Update-Prüfung – der Schalter wäre sonst irreführend.
         self.updates_check.setEnabled(not self.offline_check.isChecked())
-        # Nicht heruntergeladene Modelle sind offline nicht wählbar.
         model = self.model_box.model()
         for row in range(self.model_box.count()):
-            name = self.model_box.itemData(row)
-            blocked = self.offline_check.isChecked() and name != AUTO and name not in self._downloaded
             item = model.item(row)  # type: ignore[attr-defined]
             if item is not None:
-                item.setEnabled(not blocked)
+                item.setEnabled(not self._blocked_offline(self.model_box.itemData(row)))
         self._update_model_hint()
         self._on_changed()
 
@@ -324,7 +302,9 @@ class SettingsPage(QWidget):
 
     def _on_changed(self) -> None:
         changed = self.has_changes()
-        self.save_button.setEnabled(changed and not self._offline_blocks_model())
+        self.save_button.setEnabled(
+            changed and not self._blocked_offline(self.model_box.currentData())
+        )
         self.discard_button.setEnabled(changed)
         if changed:  # eine alte Bestätigung passt nicht mehr zum aktuellen Stand
             self.saved_label.clear()

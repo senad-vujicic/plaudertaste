@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QLabel,
     QLayout,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -67,6 +68,27 @@ def card(*items: QWidget | QLayout, spacing: int = 10) -> QFrame:
         else:
             layout.addWidget(item)
     return frame
+
+
+def scroll_area(content: QWidget) -> QScrollArea:
+    """Senkrecht scrollender Bereich, der sich der Breite anpasst (nie waagerecht scrollt)."""
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setWidget(content)
+    return scroll
+
+
+def scrolling_column(*items: QWidget, spacing: int = 14) -> QScrollArea:
+    """Widgets untereinander in einem Bildlaufbereich – mit Platz rechts für die Leiste."""
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    layout.setContentsMargins(0, 0, 8, 0)
+    layout.setSpacing(spacing)
+    for item in items:
+        layout.addWidget(item)
+    layout.addStretch()
+    return scroll_area(content)
 
 
 class SavedIndicator(QLabel):
@@ -126,7 +148,7 @@ class ToggleSwitch(QCheckBox):
         top = (self.height() - self._TRACK_H) / 2
         track = QRectF(0, top, self._TRACK_W, self._TRACK_H)
 
-        track_color = QColor(theme.ACCENT if self.isChecked() else "#3a3a46")
+        track_color = QColor(theme.ACCENT if self.isChecked() else theme.SWITCH_OFF)
         if not self.isEnabled():
             track_color.setAlpha(110)
         painter.setPen(Qt.PenStyle.NoPen)

@@ -31,7 +31,9 @@ class Recorder:
         self.microphone = microphone  # Gerätename, "" = Windows-Standard
         self.sample_rate = sample_rate
         self._chunks: list[np.ndarray] = []
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # schützt die Audio-Stücke (Audio-Thread)
+        # Start/Stopp können aus dem Tastatur- und dem Haupt-Thread kommen (Modellwechsel)
+        self._stream_lock = threading.Lock()
         self._stream: sd.RawInputStream | None = None
         self._level = 0.0
         # True, wenn das gewählte Mikrofon fehlte und der Windows-Standard genutzt wurde
@@ -43,6 +45,15 @@ class Recorder:
         return self._level
 
     def start(self) -> None:
+        with self._stream_lock:
+            self._start()
+
+    def stop(self) -> np.ndarray:
+        """Beendet die Aufnahme und gibt das Audio als 1-D-Array zurück."""
+        with self._stream_lock:
+            return self._stop()
+
+    def _start(self) -> None:
         if self._stream is not None:
             return
         self._chunks = []
@@ -67,8 +78,7 @@ class Recorder:
                 "Windows-Datenschutzeinstellungen für Desktop-Apps freigegeben?"
             ) from exc
 
-    def stop(self) -> np.ndarray:
-        """Beendet die Aufnahme und gibt das Audio als 1-D-Array zurück."""
+    def _stop(self) -> np.ndarray:
         if self._stream is None:
             return np.zeros(0, dtype=np.float32)
         self._stream.stop()

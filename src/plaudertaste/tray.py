@@ -13,10 +13,10 @@ from plaudertaste import theme
 from plaudertaste.app import Status
 
 STATUS_COLORS: dict[Status, str] = {
-    Status.LOADING: "#8e959e",  # grau, nur Umriss
-    Status.READY: "#8e959e",  # grau
-    Status.RECORDING: "#e53935",  # rot
-    Status.PROCESSING: "#f9a825",  # gelb
+    Status.LOADING: theme.STATUS_GREY,  # nur Umriss
+    Status.READY: theme.STATUS_GREY,
+    Status.RECORDING: theme.STATUS_RED,
+    Status.PROCESSING: theme.STATUS_YELLOW,
 }
 _ICON_SIZES = (16, 24, 32, 48, 64)
 

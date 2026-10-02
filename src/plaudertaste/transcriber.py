@@ -8,14 +8,19 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
+from plaudertaste.config import AUTO, whisper_language
 from plaudertaste.model_download import ProgressCallback, ensure_model
+from plaudertaste.models import AUTO_MODEL
+
+if TYPE_CHECKING:  # nur für die Typprüfung – faster-whisper wird erst bei Bedarf geladen
+    from faster_whisper import WhisperModel
 
 log = logging.getLogger(__name__)
 
-AUTO_MODEL = {"cuda": "large-v3-turbo", "cpu": "small"}
 COMPUTE_TYPE = {"cuda": "float16", "cpu": "int8"}
 
 
@@ -28,11 +33,11 @@ class ModelChoice:
 
 def resolve_model(model_setting: str, device_setting: str, cuda_devices: int) -> ModelChoice:
     """Bestimmt Modell, Gerät und Rechengenauigkeit aus Config und vorhandener Hardware."""
-    if device_setting == "auto":
+    if device_setting == AUTO:
         device = "cuda" if cuda_devices > 0 else "cpu"
     else:
         device = device_setting
-    name = AUTO_MODEL[device] if model_setting == "auto" else model_setting
+    name = AUTO_MODEL[device] if model_setting == AUTO else model_setting
     return ModelChoice(name=name, device=device, compute_type=COMPUTE_TYPE[device])
 
 
@@ -48,9 +53,12 @@ def register_nvidia_dlls() -> None:
         import nvidia  # Namespace-Paket aus nvidia-cublas-cu12
     except ImportError:
         return
+    path_entries = os.environ["PATH"].split(os.pathsep)
     for root in nvidia.__path__:
         for bin_dir in Path(root).glob("*/bin"):
-            os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+            if str(bin_dir) not in path_entries:  # bei jedem Modellwechsel nur einmal
+                path_entries.insert(0, str(bin_dir))
+    os.environ["PATH"] = os.pathsep.join(path_entries)
 
 
 class Transcriber:
@@ -67,7 +75,7 @@ class Transcriber:
         register_nvidia_dlls()
         import ctranslate2  # erst nach register_nvidia_dlls importieren
 
-        self.language = None if language == "auto" else language
+        self.language = whisper_language(language)
         self.hotwords: str | None = None  # Begriffe aus dem Wörterbuch als Hinweis
         self.gpu_fallback = False  # True: NVIDIA-GPU vorhanden, aber nicht nutzbar -> CPU
         choice = resolve_model(model_setting, device_setting, ctranslate2.get_cuda_device_count())
@@ -88,7 +96,7 @@ class Transcriber:
             self._model, self.choice = self._load(choice, path), choice
 
     @staticmethod
-    def _load(choice: ModelChoice, path: str):  # -> faster_whisper.WhisperModel
+    def _load(choice: ModelChoice, path: str) -> WhisperModel:
         from faster_whisper import WhisperModel
 
         log.info("Lade Modell '%s' auf %s (%s).", choice.name, choice.device.upper(), choice.compute_type)

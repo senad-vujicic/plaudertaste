@@ -8,10 +8,16 @@ from pathlib import Path
 
 import tomli_w
 
-VALID_MODELS = frozenset(
-    {"auto", "tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"}
-)
-VALID_DEVICES = frozenset({"auto", "cpu", "cuda"})
+from plaudertaste.models import MODEL_NAMES
+
+AUTO = "auto"  # bei Modell, Gerät und Sprache: "selbst passend wählen"
+VALID_MODELS = MODEL_NAMES | {AUTO}
+VALID_DEVICES = frozenset({AUTO, "cpu", "cuda"})
+
+
+def whisper_language(setting: str) -> str | None:
+    """Config-Wert -> Whisper-Parameter ("auto" heißt: Whisper erkennt die Sprache selbst)."""
+    return None if setting == AUTO else setting
 
 # Kommentare, die beim Speichern über jeden Eintrag geschrieben werden.
 _COMMENTS: dict[str, str] = {
@@ -54,8 +60,8 @@ class ConfigError(Exception):
 class Config:
     hotkey: str = "ctrl_r"
     language: str = "de"
-    model: str = "auto"
-    device: str = "auto"
+    model: str = AUTO
+    device: str = AUTO
     microphone: str = ""
     sound: bool = True
     overlay: bool = True

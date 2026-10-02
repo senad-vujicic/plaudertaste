@@ -140,7 +140,7 @@ def test_closing_window_hides_it_and_hints_once(
     controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     messages: list[str] = []
-    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, icon: messages.append(text))
+    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: messages.append(text))
     controller.show_window(Page.START)
 
     controller.window.close()
@@ -388,3 +388,13 @@ def test_connections_appear_in_settings(controller: gui.Controller) -> None:
 
     label = controller.settings_page.network_label.text()
     assert "api.github.com · Update-Prüfung" in label
+
+
+def test_model_switch_does_not_abort_hotkey_capture(controller: gui.Controller) -> None:
+    controller._start_hotkey_capture()
+
+    controller._activate_push_to_talk()  # z. B. weil gerade ein neues Modell fertig ist
+
+    assert isinstance(controller._key_target, HotkeyCapture)
+    controller._on_hotkey_captured("f9")
+    assert controller._key_target is controller._push_to_talk

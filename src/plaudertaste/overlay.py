@@ -16,6 +16,7 @@ from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
+from plaudertaste import theme
 from plaudertaste.app import Status
 
 WIDTH, HEIGHT = 230, 44
@@ -28,8 +29,8 @@ HANDS_FREE_EXTRA = 84  # Platz für den Hinweis "Freihand"
 
 BACKGROUND = QColor(28, 28, 30, 235)
 BORDER = QColor(255, 255, 255, 40)
-RED = QColor("#e53935")
-YELLOW = QColor("#f9a825")
+RED = QColor(theme.STATUS_RED)
+YELLOW = QColor(theme.STATUS_YELLOW)
 BAR = QColor(235, 235, 235)
 TEXT = QColor(220, 220, 220)
 
@@ -75,6 +76,10 @@ class Overlay(QWidget):
         self._hands_free = False
         self._message_timer = QTimer(self, singleShot=True, interval=MESSAGE_MS)
         self._message_timer.timeout.connect(self._hide_message)
+        # Schriften einmal anlegen statt bei jedem der ~30 Bilder pro Sekunde
+        self._font = QFont("Segoe UI", 10)
+        self._bold_font = QFont("Segoe UI", 10)
+        self._bold_font.setBold(True)
 
     @property
     def status(self) -> Status | None:
@@ -169,12 +174,10 @@ class Overlay(QWidget):
         painter.setBrush(RED)
         painter.drawEllipse(QRectF(14, middle - 9, 18, 18))
         painter.setPen(QColor("white"))
-        bold = QFont("Segoe UI", 10)
-        bold.setBold(True)
-        painter.setFont(bold)
+        painter.setFont(self._bold_font)
         painter.drawText(QRectF(14, middle - 9, 18, 18), Qt.AlignmentFlag.AlignCenter, "!")
         painter.setPen(TEXT)
-        painter.setFont(QFont("Segoe UI", 10))
+        painter.setFont(self._font)
         text_area = QRectF(42, 0, self.width() - 58, HEIGHT)
         elided = self.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(text_area.width()))
         painter.drawText(text_area, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
@@ -194,7 +197,7 @@ class Overlay(QWidget):
             painter.drawRoundedRect(QRectF(x, middle - height / 2, bar_width, height), 2, 2)
 
         painter.setPen(TEXT)
-        painter.setFont(QFont("Segoe UI", 10))
+        painter.setFont(self._font)
         if self._hands_free:
             painter.setPen(RED)
             painter.drawText(
@@ -219,5 +222,5 @@ class Overlay(QWidget):
             color.setAlphaF(0.35 + 0.65 * pulse)
             painter.setBrush(color)
             radius = 4 + 1.5 * pulse
-            center_x = WIDTH / 2 + (i - 1) * 18
+            center_x = self.width() / 2 + (i - 1) * 18
             painter.drawEllipse(QRectF(center_x - radius, HEIGHT / 2 - radius, 2 * radius, 2 * radius))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPlainTextEdit,
     QPushButton,
-    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,7 +19,16 @@ from PySide6.QtWidgets import (
 )
 
 from plaudertaste.dictionary import Dictionary
-from plaudertaste.ui import SavedIndicator, card, card_title, hint_label, muted_label, page_title, set_hint
+from plaudertaste.ui import (
+    SavedIndicator,
+    card,
+    card_title,
+    hint_label,
+    muted_label,
+    page_title,
+    scrolling_column,
+    set_hint,
+)
 
 TOO_MANY_TERMS_HINT = (
     "Sehr viele Begriffe: Whisper kann nur einen begrenzten Hinweis aufnehmen, die letzten "
@@ -116,22 +124,10 @@ class DictionaryPage(QWidget):
         header.addStretch()
         header.addWidget(self.saved_label)
 
-        content = QWidget()
-        cards = QVBoxLayout(content)
-        cards.setContentsMargins(0, 0, 8, 0)  # Platz für die Scrollleiste
-        cards.setSpacing(14)
-        cards.addWidget(terms_card)
-        cards.addWidget(replacements_card)
-        cards.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidget(content)
-
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.addLayout(header)
-        layout.addWidget(scroll, 1)
+        layout.addWidget(scrolling_column(terms_card, replacements_card), 1)
         self._update_buttons()
 
     def set_dictionary(self, dictionary: Dictionary) -> None:

@@ -21,6 +21,12 @@ ACCENT_PRESSED = "#6a4ae6"
 ACCENT_SOFT = "#2b2545"  # Auswahl-Hintergrund in der Seitenleiste
 SUCCESS = "#22c55e"
 HINT = "#f0a63a"
+SWITCH_OFF = "#3a3a46"
+
+# Statusfarben – Tray-Icon, Overlay und Startseite nutzen dieselben
+STATUS_GREY = "#8e959e"  # lädt / bereit
+STATUS_RED = "#e53935"  # Aufnahme
+STATUS_YELLOW = "#f9a825"  # Verarbeitung
 
 STYLESHEET = f"""
 QWidget {{
@@ -136,7 +142,7 @@ QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: #3a3a46; border-radius: 4px; min-height: 30px; }}
+QScrollBar::handle:vertical {{ background: {SWITCH_OFF}; border-radius: 4px; min-height: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 
 QMenu {{

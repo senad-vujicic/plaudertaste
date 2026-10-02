@@ -88,8 +88,7 @@ class App:
         self._on_status = on_status
         self._on_dictation = on_dictation
         self._on_notice = on_notice
-        self._dictionary = Dictionary()
-        self.set_dictionary(dictionary)
+        self.set_dictionary(dictionary)  # setzt self._dictionary und die Whisper-Hinweise
         self.voice_commands = voice_commands
         self.remove_fillers = remove_fillers
         self._jobs: queue.Queue[np.ndarray | object | None] = queue.Queue()

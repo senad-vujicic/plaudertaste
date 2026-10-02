@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -32,7 +31,15 @@ from plaudertaste.history import Entry, History
 from plaudertaste.settings_page import SettingsPage
 from plaudertaste.stats import TYPING_WPM, Stats, Totals
 from plaudertaste.tray import STATUS_COLORS
-from plaudertaste.ui import card, card_title, format_duration, format_number, muted_label, page_title
+from plaudertaste.ui import (
+    card,
+    card_title,
+    format_duration,
+    format_number,
+    muted_label,
+    page_title,
+    scroll_area,
+)
 
 
 class Page(IntEnum):
@@ -200,9 +207,7 @@ class HistoryPage(QWidget):
         self._list.addStretch()
         container = QWidget()
         container.setLayout(self._list)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(container)
+        scroll = scroll_area(container)
 
         self.empty_label = muted_label(
             "Noch keine Diktate seit dem Start. Halte deinen Hotkey gedrückt und sprich – "
@@ -296,9 +301,6 @@ class StatsPage(QWidget):
 
     def words(self, column: int) -> str:
         return self._words[column].text()
-
-    def detail(self, column: int, name: str) -> str:
-        return self._details[column][name].text()
 
     def refresh(self) -> None:
         for column, totals in enumerate(
@@ -467,10 +469,4 @@ def _padded(widget: QWidget, scrollable: bool) -> QWidget:
     layout = QVBoxLayout(wrapper)
     layout.setContentsMargins(28, 24, 28, 20)
     layout.addWidget(widget)
-    if not scrollable:
-        return wrapper
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setWidget(wrapper)
-    return scroll
+    return scroll_area(wrapper) if scrollable else wrapper

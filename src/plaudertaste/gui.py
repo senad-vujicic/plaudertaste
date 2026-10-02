@@ -21,8 +21,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from plaudertaste import GITHUB_REPO, __version__, autostart, paths, theme
 from plaudertaste.app import MIC_UNAVAILABLE, App, Notice, Status
-from plaudertaste.catalog import AUTO, MODELS, language_display
-from plaudertaste.config import Config, ConfigError, load_config, save_config
+from plaudertaste.catalog import language_display
+from plaudertaste.config import Config, ConfigError, load_config, save_config, whisper_language
 from plaudertaste.devices import list_microphones
 from plaudertaste.dictionary import Dictionary, DictionaryError, load_dictionary, save_dictionary
 from plaudertaste.dictionary_page import DictionaryPage
@@ -37,6 +37,7 @@ from plaudertaste.hotkey import (
 )
 from plaudertaste.main_window import MainWindow, Page
 from plaudertaste.model_download import DownloadCancelled, DownloadFailed, is_model_downloaded
+from plaudertaste.models import MODELS
 from plaudertaste.network import OfflineError, guard
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
@@ -45,8 +46,8 @@ from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
 from plaudertaste.stats import Stats
 from plaudertaste.transcriber import Transcriber
-from plaudertaste.updates import Update, check_for_update
 from plaudertaste.tray import Tray, make_app_icon
+from plaudertaste.updates import Update, check_for_update
 
 log = logging.getLogger(__name__)
 
@@ -67,11 +68,6 @@ PROBLEM_GPU_FALLBACK = (
 # Eigene Kennung für Windows: Ohne sie ordnet die Taskleiste das Fenster python.exe zu
 # und zeigt dessen Icon.
 APP_USER_MODEL_ID = "Plaudertaste.Plaudertaste"
-
-
-def whisper_language(setting: str) -> str | None:
-    """Config-Wert -> Whisper-Parameter ("auto" heißt: Whisper erkennt selbst)."""
-    return None if setting == AUTO else setting
 
 
 class Controller(QObject):
@@ -168,6 +164,11 @@ class Controller(QObject):
         if self._config.check_updates and not self._config.offline_mode:
             threading.Thread(target=self._check_for_update, name="update-check", daemon=True).start()
 
+    def _notify(self, text: str, warning: bool = True) -> None:
+        """Windows-Hinweis unten rechts – nimmt nie den Fokus."""
+        icon = QSystemTrayIcon.MessageIcon.Warning if warning else QSystemTrayIcon.MessageIcon.Information
+        self.tray.showMessage(TITLE, text, icon, 5000)
+
     def _refresh_connections(self) -> None:
         self.settings_page.set_connections(guard.connections)
 
@@ -181,12 +182,7 @@ class Controller(QObject):
     def _on_update_available(self, update: Update) -> None:
         log.info("Neue Version verfügbar: %s", update.version)
         self.window.start_page.show_update(update.version, update.url)
-        self.tray.showMessage(
-            TITLE,
-            f"Neue Version {update.version} verfügbar – Details auf der Startseite.",
-            QSystemTrayIcon.MessageIcon.Information,
-            5000,
-        )
+        self._notify(f"Neue Version {update.version} verfügbar – Details auf der Startseite.", warning=False)
 
     def show_window(self, page: Page) -> None:
         if page is Page.SETTINGS and self.window.current_page() is Page.SETTINGS:
@@ -360,7 +356,10 @@ class Controller(QObject):
             on_hands_free=self.hands_free_started.emit,
             on_undo=self._app.on_undo,
         )
-        self._key_target = self._push_to_talk
+        # Läuft gerade eine Hotkey-Aufnahme in den Einstellungen, nicht dazwischenfunken –
+        # nach ihrem Ende übernimmt _stop_hotkey_capture das neue Push-to-Talk.
+        if not isinstance(self._key_target, HotkeyCapture):
+            self._key_target = self._push_to_talk
 
     # --- Status, Ton, Overlay, Verlauf, Statistik ---
 
@@ -398,7 +397,7 @@ class Controller(QObject):
         if self._config.overlay:
             self._overlay.show_message(notice.text)
         if notice.serious:
-            self.tray.showMessage(TITLE, notice.text, QSystemTrayIcon.MessageIcon.Warning, 5000)
+            self._notify(notice.text)
         if notice is MIC_UNAVAILABLE:
             self._set_problem("mic", PROBLEM_MIC_UNAVAILABLE)
 
@@ -418,7 +417,7 @@ class Controller(QObject):
             self._problems[key] = problem
         self.window.start_page.set_problems(list(self._problems.values()))
         if is_new and key != "mic":  # "mic" meldet bereits _on_notice
-            self.tray.showMessage(TITLE, problem[0], QSystemTrayIcon.MessageIcon.Warning, 5000)
+            self._notify(problem[0])
 
     # --- Wörterbuch ---
 
@@ -490,10 +489,9 @@ class Controller(QObject):
     def _on_window_hidden(self) -> None:
         if not self._tray_hint_shown:  # nur beim ersten Mal erklären
             self._tray_hint_shown = True
-            self.tray.showMessage(
-                TITLE,
+            self._notify(
                 "Plaudertaste läuft im Hintergrund weiter. Beenden über Rechtsklick → Beenden.",
-                self.tray.icon(),
+                warning=False,
             )
 
     def _on_page_changed(self, row: int) -> None:
