@@ -54,4 +54,16 @@ def check_for_update(
     latest, installed = parse_version(tag), parse_version(current)
     if latest is None or installed is None or latest <= installed:
         return None
-    return Update(version=tag.lstrip("v"), url=str(release.get("html_url", "")))
+    return Update(version=tag.lstrip("v"), url=release_page(repo, release.get("html_url")))
+
+
+def release_page(repo: str, url: object) -> str:
+    """Die Download-Seite – aber nur, wenn sie wirklich zu diesem Projekt auf GitHub gehört.
+
+    Der Knopf "Zur Download-Seite" öffnet die Adresse im Browser. Eine fremde Adresse in der
+    Antwort (Fehler oder Manipulation) wird deshalb nie übernommen.
+    """
+    expected = f"https://github.com/{repo}/releases/"
+    if isinstance(url, str) and url.startswith(expected):
+        return url
+    return expected + "latest"

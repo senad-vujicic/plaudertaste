@@ -1,6 +1,6 @@
 import pytest
 
-from plaudertaste.updates import Update, check_for_update, parse_version
+from plaudertaste.updates import Update, check_for_update, parse_version, release_page
 
 
 @pytest.mark.parametrize(
@@ -31,3 +31,26 @@ def test_offline_is_not_an_error() -> None:
         raise OSError("Keine Verbindung")
 
     assert check_for_update("0.1.0", "x/y", fetch=offline) is None
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (
+            "https://github.com/senad-vujicic/plaudertaste/releases/tag/v0.2.0",
+            "https://github.com/senad-vujicic/plaudertaste/releases/tag/v0.2.0",
+        ),
+        # fremde oder kaputte Adressen werden nie übernommen
+        (
+            "https://evil.example/plaudertaste",
+            "https://github.com/senad-vujicic/plaudertaste/releases/latest",
+        ),
+        (
+            "https://github.com/senad-vujicic/plaudertaste.evil/releases/x",
+            "https://github.com/senad-vujicic/plaudertaste/releases/latest",
+        ),
+        (None, "https://github.com/senad-vujicic/plaudertaste/releases/latest"),
+    ],
+)
+def test_release_page_only_accepts_own_project(url: object, expected: str) -> None:
+    assert release_page("senad-vujicic/plaudertaste", url) == expected

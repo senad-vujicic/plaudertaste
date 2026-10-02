@@ -16,6 +16,7 @@ import os
 import queue
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
 from huggingface_hub import snapshot_download
@@ -35,7 +36,7 @@ ALLOW_PATTERNS = [
 POLL_INTERVAL_S = 0.2  # so oft wird auf "Abbrechen" geprüft
 
 ProgressCallback = Callable[[str, int, int], None]  # (Modellname, geladene Bytes, Gesamt-Bytes)
-DownloadTarget = Callable[[str, Any], None]  # (repo_id, Nachrichten-Warteschlange)
+DownloadTarget = Callable[[str, str, Any], None]  # (repo_id, revision, Nachrichten-Warteschlange)
 
 
 class DownloadCancelled(Exception):
@@ -128,12 +129,18 @@ def exit_with_parent() -> None:
     threading.Thread(target=watch, name="exit-with-parent", daemon=True).start()
 
 
-def download_in_child(repo_id: str, messages: Any) -> None:
+def download_in_child(repo_id: str, revision: str, messages: Any) -> None:
     """Läuft im eigenen Prozess: lädt herunter und meldet alles über die Warteschlange."""
     exit_with_parent()
     try:
         path = snapshot_download(
-            repo_id, allow_patterns=ALLOW_PATTERNS, tqdm_class=counting_tqdm(_QueueSink(messages))
+            repo_id,
+            revision=revision,  # genau die geprüfte Fassung, nie "die neueste"
+            allow_patterns=ALLOW_PATTERNS,
+            # Nie einen auf dem PC gespeicherten Hugging-Face-Schlüssel mitsenden:
+            # Der Download bleibt anonym und keinem Konto zuordenbar.
+            token=False,
+            tqdm_class=counting_tqdm(_QueueSink(messages)),
         )
     except Exception as exc:
         messages.put(("error", f"{type(exc).__name__}: {exc}"))
@@ -143,6 +150,7 @@ def download_in_child(repo_id: str, messages: Any) -> None:
 
 def download_in_process(
     repo_id: str,
+    revision: str,
     sink: ByteSink,
     cancel: threading.Event,
     target: DownloadTarget = download_in_child,
@@ -150,7 +158,7 @@ def download_in_process(
     """Startet den Download-Prozess und wartet darauf – bricht ab, sobald `cancel` gesetzt ist."""
     context = multiprocessing.get_context("spawn")  # unter Windows ohnehin der Standard
     messages = context.Queue()
-    process = context.Process(target=target, args=(repo_id, messages), daemon=True)
+    process = context.Process(target=target, args=(repo_id, revision, messages), daemon=True)
     process.start()
     try:
         while True:
@@ -178,14 +186,22 @@ def download_in_process(
         messages.close()
 
 
-def is_cached(name: str) -> str | None:
-    """Pfad zum Modell, falls es schon lokal vorliegt – sonst None. Lädt nichts herunter."""
-    from faster_whisper import download_model  # schwerer Import, nur im Hauptprozess
-
+def is_cached(name: str, cache_dir: str | None = None) -> str | None:
+    """Pfad zum Modell, falls es vollständig lokal vorliegt – sonst None. Lädt nichts herunter."""
+    info = model_info(name)
     try:
-        return download_model(name, local_files_only=True)
+        path = snapshot_download(
+            info.repo_id,
+            revision=info.revision,
+            allow_patterns=ALLOW_PATTERNS,
+            cache_dir=cache_dir,  # None = Standard-Cache von Hugging Face
+            local_files_only=True,
+            token=False,
+        )
     except Exception:  # huggingface_hub meldet "nicht im Cache" mit eigenen Fehlertypen
         return None
+    # Abgebrochener Download: Die kleinen Dateien sind da, die Modell-Gewichte noch nicht.
+    return path if (Path(path) / "model.bin").is_file() else None
 
 
 def is_model_downloaded(name: str) -> bool:
@@ -215,6 +231,6 @@ def ensure_model(
     counter = ProgressCounter(
         info.size_mb * 1_000_000, lambda done, total: report(name, done, total)
     )
-    path = download_in_process(info.repo_id, counter, cancel or threading.Event())
+    path = download_in_process(info.repo_id, info.revision, counter, cancel or threading.Event())
     counter.finish()
     return path

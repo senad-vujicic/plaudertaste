@@ -13,6 +13,8 @@ from pathlib import Path
 
 import tomli_w
 
+from plaudertaste.storage import write_text_atomic
+
 # Whisper nimmt nur ~224 Sprachbausteine als Hinweis auf; grob geschätzt passen so viele
 # Zeichen sicher hinein. Darüber werden Begriffe womöglich nicht mehr berücksichtigt.
 MAX_HINT_CHARS = 600
@@ -119,5 +121,4 @@ def save_dictionary(path: Path, dictionary: Dictionary) -> None:
             {"spoken": r.spoken, "written": r.written} for r in dictionary.replacements
         ],
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_HEADER + tomli_w.dumps(data), encoding="utf-8")
+    write_text_atomic(path, _HEADER + tomli_w.dumps(data))

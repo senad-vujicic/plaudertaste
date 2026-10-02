@@ -13,7 +13,6 @@ dependencies = [
     "faster-whisper>=1.1",
     "numpy>=1.26",
     "pynput>=1.7",
-    "pyperclip>=1.9",
     "PySide6-Essentials>=6.7",
     "sounddevice>=0.5",
     "tomli-w>=1.0",
@@ -25,6 +24,7 @@ gpu = [
     "nvidia-cublas-cu12",
 ]
 dev = [
+    "pip-audit>=2.9",  # prüft alle Abhängigkeiten auf bekannte Sicherheitslücken
     "pytest>=8",
     "ruff>=0.16",
 ]

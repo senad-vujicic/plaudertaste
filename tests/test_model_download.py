@@ -1,4 +1,5 @@
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -20,23 +21,23 @@ from plaudertaste.model_download import (
 # --- Attrappen für den Kind-Prozess (müssen auf Modulebene stehen, damit "spawn" sie findet) ---
 
 
-def fake_success(repo_id: str, messages: Any) -> None:
+def fake_success(repo_id: str, revision: str, messages: Any) -> None:
     for _ in range(3):
         messages.put(("bytes", 1000))
     messages.put(("done", f"C:/cache/{repo_id}"))
 
 
-def fake_endless(repo_id: str, messages: Any) -> None:
+def fake_endless(repo_id: str, revision: str, messages: Any) -> None:
     while True:
         messages.put(("bytes", 1))
         time.sleep(0.05)
 
 
-def fake_error(repo_id: str, messages: Any) -> None:
+def fake_error(repo_id: str, revision: str, messages: Any) -> None:
     messages.put(("error", "ConnectError: keine Internetverbindung"))
 
 
-def fake_crash(repo_id: str, messages: Any) -> None:
+def fake_crash(repo_id: str, revision: str, messages: Any) -> None:
     os._exit(1)
 
 
@@ -94,7 +95,7 @@ def test_only_download_bytes_are_counted() -> None:
 def test_successful_download_reports_bytes_and_path() -> None:
     sink = Sink()
 
-    path = download_in_process("Systran/x", sink, threading.Event(), target=fake_success)
+    path = download_in_process("Systran/x", "abc123", sink, threading.Event(), target=fake_success)
 
     assert path == "C:/cache/Systran/x"
     assert sink.total == 3000
@@ -106,19 +107,19 @@ def test_cancel_stops_the_download_process_quickly() -> None:
     started = time.monotonic()
 
     with pytest.raises(DownloadCancelled):
-        download_in_process("Systran/x", Sink(), cancel, target=fake_endless)
+        download_in_process("Systran/x", "abc123", Sink(), cancel, target=fake_endless)
 
     assert time.monotonic() - started < 3
 
 
 def test_error_in_child_is_reported() -> None:
     with pytest.raises(DownloadFailed, match="keine Internetverbindung"):
-        download_in_process("Systran/x", Sink(), threading.Event(), target=fake_error)
+        download_in_process("Systran/x", "abc123", Sink(), threading.Event(), target=fake_error)
 
 
 def test_crashed_child_is_reported() -> None:
     with pytest.raises(DownloadFailed, match="unerwartet beendet"):
-        download_in_process("Systran/x", Sink(), threading.Event(), target=fake_crash)
+        download_in_process("Systran/x", "abc123", Sink(), threading.Event(), target=fake_crash)
 
 
 # --- ensure_model ---
@@ -136,7 +137,7 @@ def test_cached_model_is_not_downloaded_again(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_missing_model_is_downloaded_with_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_download(repo_id: str, sink: Any, cancel: threading.Event) -> str:
+    def fake_download(repo_id: str, revision: str, sink: Any, cancel: threading.Event) -> str:
         sink.add(78_000_000)
         return f"C:/cache/{repo_id}"
 
@@ -166,7 +167,9 @@ def test_download_is_recorded_in_network_protocol(monkeypatch: pytest.MonkeyPatc
     fresh = NetworkGuard()
     monkeypatch.setattr(model_download, "guard", fresh)
     monkeypatch.setattr(model_download, "is_cached", lambda name: None)
-    monkeypatch.setattr(model_download, "download_in_process", lambda repo, sink, cancel: "C:/x")
+    monkeypatch.setattr(
+        model_download, "download_in_process", lambda repo, revision, sink, cancel: "C:/x"
+    )
 
     model_download.ensure_model("tiny")
 
@@ -218,3 +221,54 @@ def _process_exists(pid: int) -> bool:
     # Bytes statt Text: tasklist antwortet in der Konsolen-Codepage ("Es sind keine …")
     output = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True)
     return str(pid).encode() in output.stdout
+
+
+# --- Sicherheit: feste Versionen, anonymer Download, nur vollständige Modelle ---
+
+
+def test_every_model_is_pinned_to_a_commit() -> None:
+    from plaudertaste.models import MODELS
+
+    for info in MODELS:
+        assert len(info.revision) == 40 and int(info.revision, 16) >= 0, info.name
+
+
+def test_child_downloads_pinned_revision_without_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_snapshot_download(repo_id: str, **kwargs: Any) -> str:
+        calls.append({"repo_id": repo_id, **kwargs})
+        return "C:/cache/model"
+
+    monkeypatch.setattr(model_download, "snapshot_download", fake_snapshot_download)
+    messages: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    model_download.download_in_child("Systran/x", "abc123", messages)
+
+    assert calls[0]["revision"] == "abc123"
+    assert calls[0]["token"] is False  # nie einen gespeicherten Schlüssel mitsenden
+    assert messages.get_nowait() == ("done", "C:/cache/model")
+
+
+def _fake_cache(root: Path, with_weights: bool) -> Path:
+    from plaudertaste.models import model_info
+
+    info = model_info("tiny")
+    snapshot = root / "models--Systran--faster-whisper-tiny" / "snapshots" / info.revision
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    if with_weights:
+        (snapshot / "model.bin").write_bytes(b"\0")
+    return snapshot
+
+
+def test_half_downloaded_model_is_not_cached(tmp_path: Path) -> None:
+    _fake_cache(tmp_path, with_weights=False)  # z. B. Download abgebrochen
+
+    assert model_download.is_cached("tiny", cache_dir=str(tmp_path)) is None
+
+
+def test_complete_model_is_cached(tmp_path: Path) -> None:
+    snapshot = _fake_cache(tmp_path, with_weights=True)
+
+    assert Path(model_download.is_cached("tiny", cache_dir=str(tmp_path)) or "") == snapshot

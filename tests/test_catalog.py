@@ -38,7 +38,7 @@ def test_all_listed_models_exist_in_faster_whisper_and_config() -> None:
 
 
 def test_model_label() -> None:
-    info = ModelInfo("small", "Systran/faster-whisper-small", 486, "schnell, gut für CPU")
+    info = ModelInfo("small", "Systran/faster-whisper-small", "abc", 486, "schnell, gut für CPU")
 
     assert model_label(info, downloaded=False) == "small – 486 MB, schnell, gut für CPU"
     assert model_label(info, downloaded=True).endswith("✓ heruntergeladen")

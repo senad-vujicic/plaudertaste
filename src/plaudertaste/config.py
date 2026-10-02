@@ -9,6 +9,7 @@ from pathlib import Path
 import tomli_w
 
 from plaudertaste.models import MODEL_NAMES
+from plaudertaste.storage import write_text_atomic
 
 AUTO = "auto"  # bei Modell, Gerät und Sprache: "selbst passend wählen"
 VALID_MODELS = MODEL_NAMES | {AUTO}
@@ -126,5 +127,4 @@ def load_config(path: Path) -> Config:
 
 def save_config(path: Path, config: Config) -> None:
     """Speichert die Config – mit Kommentaren, damit sie von Hand lesbar bleibt."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_config(config), encoding="utf-8")
+    write_text_atomic(path, render_config(config))

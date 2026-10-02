@@ -1,4 +1,8 @@
-"""Text an der Cursorposition einfügen – über die Zwischenablage und Strg+V."""
+"""Text an der Cursorposition einfügen – über die Zwischenablage und Strg+V.
+
+Der diktierte Text liegt dabei nur kurz und als "privat" markiert in der Zwischenablage:
+nicht im Windows-Verlauf, nicht in der Cloud (siehe clipboard.py).
+"""
 
 from __future__ import annotations
 
@@ -6,8 +10,9 @@ import time
 from collections.abc import Callable
 from typing import Protocol
 
-import pyperclip
 from pynput.keyboard import Controller, Key
+
+from plaudertaste.clipboard import WindowsClipboard
 
 
 class Clipboard(Protocol):
@@ -32,7 +37,7 @@ def erase_before_cursor(count: int) -> None:
 
 def paste_text(
     text: str,
-    clipboard: Clipboard = pyperclip,
+    clipboard: Clipboard | None = None,
     send_paste: Callable[[], None] = press_ctrl_v,
     settle_delay: float = 0.05,
     restore_delay: float = 0.3,
@@ -42,6 +47,7 @@ def paste_text(
     War vorher kein Text in der Zwischenablage (leer oder z. B. ein Bild),
     bleibt der diktierte Text darin – als Backup zum erneuten Einfügen.
     """
+    clipboard = clipboard or WindowsClipboard()
     previous = clipboard.paste()
     # Windows-Standard für Zeilenumbrüche in der Zwischenablage ist \r\n – ältere
     # Programme und manche Office-Felder verstehen ein einzelnes \n sonst nicht.

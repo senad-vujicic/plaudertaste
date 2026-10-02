@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from plaudertaste.storage import write_text_atomic
+
 log = logging.getLogger(__name__)
 
 TYPING_WPM = 40  # Annahme fürs Tippen (gängiger Durchschnitt), wird im Fenster angezeigt
@@ -90,9 +92,4 @@ class Stats:
 
     def _save(self) -> None:
         data = {"days": {day.isoformat(): asdict(t) for day, t in sorted(self._days.items())}}
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        # Erst in eine Zwischendatei schreiben, dann in einem Schritt ersetzen:
-        # Ein Absturz mitten im Speichern hinterlässt so nie eine halbe Datei.
-        temporary = self._path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        os.replace(temporary, self._path)
+        write_text_atomic(self._path, json.dumps(data, indent=2))
