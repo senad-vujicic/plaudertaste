@@ -16,6 +16,10 @@ from plaudertaste.sounds import TonePlayer
 class FakeApp:
     def __init__(self) -> None:
         self.languages: list[str | None] = []
+        self.dictionaries: list[object] = []
+
+    def set_dictionary(self, dictionary: object) -> None:
+        self.dictionaries.append(dictionary)
 
     def set_language(self, language: str | None) -> None:
         self.languages.append(language)
@@ -32,6 +36,7 @@ def controller(
     # Nichts Echtes anfassen: Config, Statistik, Registry, Mikrofone, Modell-Cache.
     monkeypatch.setattr(paths, "config_file", lambda: tmp_path / "config.toml")
     monkeypatch.setattr(paths, "stats_file", lambda: tmp_path / "stats.json")
+    monkeypatch.setattr(paths, "dictionary_file", lambda: tmp_path / "woerterbuch.toml")
     registry = {"enabled": False}
     monkeypatch.setattr(autostart, "is_enabled", lambda: registry["enabled"])
     monkeypatch.setattr(autostart, "set_enabled", lambda value: registry.update(enabled=value))
@@ -287,3 +292,32 @@ def test_key_error_does_not_kill_listener(controller: gui.Controller) -> None:
 
     controller._on_key_press("ctrl_r")  # darf keine Ausnahme nach außen werfen
     controller._on_key_release("ctrl_r")
+
+
+def test_dictionary_changes_are_saved_and_applied_immediately(controller: gui.Controller) -> None:
+    from plaudertaste.dictionary import Dictionary, load_dictionary
+
+    page = controller.dictionary_page
+    page.term_input.setText("Plaudertaste")
+    page.term_input.returnPressed.emit()
+
+    expected = Dictionary(terms=("Plaudertaste",))
+    assert load_dictionary(paths.dictionary_file()) == expected
+    assert controller._app.dictionaries == [expected]  # type: ignore[union-attr]
+    assert not page.saved_label.isHidden()
+
+
+def test_broken_dictionary_file_is_kept_as_backup(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(paths, "config_file", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr(paths, "stats_file", lambda: tmp_path / "stats.json")
+    monkeypatch.setattr(paths, "dictionary_file", lambda: tmp_path / "woerterbuch.toml")
+    monkeypatch.setattr(gui.QSystemTrayIcon, "showMessage", lambda *args: None)
+    (tmp_path / "woerterbuch.toml").write_text("terms = [kaputt", encoding="utf-8")
+
+    controller = gui.Controller(Config(), tmp_path / "app.log")
+
+    assert (tmp_path / "woerterbuch.defekt.toml").read_text(encoding="utf-8") == "terms = [kaputt"
+    assert "Wörterbuch-Datei fehlerhaft" in controller.window.start_page.problems_label.text()
+    controller.window.deleteLater()

@@ -68,6 +68,7 @@ class Transcriber:
         import ctranslate2  # erst nach register_nvidia_dlls importieren
 
         self.language = None if language == "auto" else language
+        self.hotwords: str | None = None  # Begriffe aus dem Wörterbuch als Hinweis
         self.gpu_fallback = False  # True: NVIDIA-GPU vorhanden, aber nicht nutzbar -> CPU
         choice = resolve_model(model_setting, device_setting, ctranslate2.get_cuda_device_count())
         # Erst herunterladen, dann laden: Ein Netzwerkfehler darf nicht als
@@ -104,6 +105,7 @@ class Transcriber:
         segments, _info = self._model.transcribe(
             audio,
             language=self.language,
+            hotwords=self.hotwords,
             beam_size=5,
             vad_filter=True,  # Stille am Anfang/Ende ignorieren, verhindert erfundenen Text
         )

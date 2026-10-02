@@ -5,9 +5,17 @@ Das Aussehen kommt aus theme.py – hier werden nur die passenden objectNames ge
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRectF, QSize, Qt
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
-from PySide6.QtWidgets import QCheckBox, QFrame, QLabel, QLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFrame,
+    QGraphicsOpacityEffect,
+    QLabel,
+    QLayout,
+    QVBoxLayout,
+    QWidget,
+)
 
 from plaudertaste import theme
 
@@ -59,6 +67,40 @@ def card(*items: QWidget | QLayout, spacing: int = 10) -> QFrame:
         else:
             layout.addWidget(item)
     return frame
+
+
+class SavedIndicator(QLabel):
+    """Grünes "✓ Gespeichert": wird eingeblendet und verblasst nach ein paar Sekunden."""
+
+    TEXT = "✓ Gespeichert"
+    VISIBLE_MS = 2500
+    FADE_MS = 600
+
+    def __init__(self) -> None:
+        super().__init__(self.TEXT)
+        self.setObjectName("success")
+        self._opacity = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._opacity)
+        self.setVisible(False)
+        self.fade = QPropertyAnimation(self._opacity, b"opacity", self)
+        self.fade.setDuration(self.FADE_MS)
+        self.fade.setStartValue(1.0)
+        self.fade.setEndValue(0.0)
+        self.fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.fade.finished.connect(lambda: self.setVisible(False))
+        self.fade_delay = QTimer(self, singleShot=True, interval=self.VISIBLE_MS)
+        self.fade_delay.timeout.connect(self.fade.start)
+
+    def flash(self) -> None:
+        self.fade.stop()
+        self._opacity.setOpacity(1.0)
+        self.setVisible(True)
+        self.fade_delay.start()
+
+    def clear(self) -> None:
+        self.fade_delay.stop()
+        self.fade.stop()
+        self.setVisible(False)
 
 
 class ToggleSwitch(QCheckBox):

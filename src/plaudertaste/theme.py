@@ -94,6 +94,35 @@ QComboBox QAbstractItemView {{
     outline: 0;
 }}
 
+QLineEdit {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 7px 10px;
+    min-height: 20px;
+}}
+QLineEdit:focus {{ border-color: {ACCENT}; }}
+
+QListWidget#entries, QTableWidget {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 4px;
+    outline: 0;
+}}
+QListWidget#entries::item, QTableWidget::item {{ padding: 6px 8px; border-radius: 6px; }}
+QListWidget#entries::item:selected, QTableWidget::item:selected {{
+    background: {ACCENT_SOFT};
+    color: {TEXT};
+}}
+QHeaderView::section {{
+    background: {SURFACE};
+    color: {MUTED};
+    border: none;
+    padding: 6px 8px;
+}}
+QTableCornerButton::section {{ background: {SURFACE}; border: none; }}
+
 QProgressBar {{
     background: {BACKGROUND};
     border: 1px solid {BORDER};

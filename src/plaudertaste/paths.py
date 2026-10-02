@@ -27,6 +27,10 @@ def config_file() -> Path:
     return config_dir() / "config.toml"
 
 
+def dictionary_file() -> Path:
+    return config_dir() / "woerterbuch.toml"
+
+
 def log_dir() -> Path:
     return local_dir() / "logs"
 

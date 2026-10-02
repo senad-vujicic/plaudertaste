@@ -12,6 +12,7 @@ from enum import Enum
 
 import numpy as np
 
+from plaudertaste.dictionary import Dictionary
 from plaudertaste.paster import paste_text
 from plaudertaste.recorder import Recorder, RecorderError
 from plaudertaste.transcriber import Transcriber
@@ -67,6 +68,7 @@ class App:
         on_status: Callable[[Status], None] = lambda status: None,
         on_dictation: Callable[[str, float], None] = lambda text, seconds: None,
         on_notice: Callable[[Notice], None] = lambda notice: None,
+        dictionary: Dictionary = Dictionary(),
     ) -> None:
         self._transcriber = transcriber
         self._recorder = recorder
@@ -74,6 +76,8 @@ class App:
         self._on_status = on_status
         self._on_dictation = on_dictation
         self._on_notice = on_notice
+        self._dictionary = Dictionary()
+        self.set_dictionary(dictionary)
         self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
         # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
@@ -89,6 +93,11 @@ class App:
     def set_language(self, language: str | None) -> None:
         """Sprache wechseln, ohne das Modell neu zu laden (None = automatisch erkennen)."""
         self._transcriber.language = language
+
+    def set_dictionary(self, dictionary: Dictionary) -> None:
+        """Begriffe gehen als Hinweis an Whisper, Ersetzungen gelten nach der Erkennung."""
+        self._dictionary = dictionary
+        self._transcriber.hotwords = dictionary.hotwords()
 
     def stop(self) -> None:
         """Arbeitet noch wartende Aufnahmen ab und beendet dann den Worker."""
@@ -144,6 +153,7 @@ class App:
             log.info("Kein Text erkannt (%s).", "Stille" if silent else "unverständlich")
             self._on_notice(SILENT_MICROPHONE if silent else NOTHING_UNDERSTOOD)
             return
+        text = self._dictionary.apply(text)
         try:
             self._paste(text + " ")  # trennt aufeinanderfolgende Diktate
         except Exception:

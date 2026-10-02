@@ -261,3 +261,19 @@ def test_failed_paste_keeps_text_for_history() -> None:
 
     assert notices == [PASTE_FAILED]
     assert reported == [("Wichtiger Satz", 1.0)]  # Text nicht verloren
+
+
+def test_dictionary_replacements_and_hints_are_applied() -> None:
+    from plaudertaste.dictionary import Dictionary, Replacement
+
+    pasted: list[str] = []
+    transcriber = FakeTranscriber(["Danke und mfg"])
+    dictionary = Dictionary(
+        terms=("Plaudertaste",), replacements=(Replacement("mfg", "Mit freundlichen Grüßen"),)
+    )
+    app = App(transcriber, FakeRecorder(), paste=pasted.append, dictionary=dictionary)  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert pasted == ["Danke und Mit freundlichen Grüßen "]
+    assert transcriber.hotwords == "Plaudertaste"  # type: ignore[attr-defined]

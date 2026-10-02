@@ -149,11 +149,11 @@ def test_captured_hotkey_counts_as_change() -> None:
 def test_saved_confirmation_appears_and_fades(qapp: QApplication) -> None:
     from PySide6.QtCore import QEventLoop, QTimer
 
-    from plaudertaste import settings_page
+    from plaudertaste.ui import SavedIndicator
 
     page = make_page()
-    page._fade_delay.setInterval(10)  # im Test nicht 2,5 s warten
-    page._fade.setDuration(10)
+    page.saved_label.fade_delay.setInterval(10)  # im Test nicht 2,5 s warten
+    page.saved_label.fade.setDuration(10)
 
     page.show_saved()
     assert not page.saved_label.isHidden()
@@ -162,7 +162,7 @@ def test_saved_confirmation_appears_and_fades(qapp: QApplication) -> None:
     QTimer.singleShot(200, loop.quit)
     loop.exec()
     assert page.saved_label.isHidden()
-    assert settings_page.SAVED_TEXT == page.saved_label.text()
+    assert page.saved_label.text() == SavedIndicator.TEXT
 
 
 def test_new_change_hides_old_confirmation() -> None:

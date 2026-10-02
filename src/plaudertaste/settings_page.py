@@ -8,12 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -25,14 +24,19 @@ from PySide6.QtWidgets import (
 from plaudertaste.catalog import AUTO, MODELS, format_size, language_options, model_label
 from plaudertaste.config import Config
 from plaudertaste.hotkey import describe_hotkey, hotkey_problem
-from plaudertaste.ui import ToggleSwitch, card, card_title, hint_label, page_title, set_hint
+from plaudertaste.ui import (
+    SavedIndicator,
+    ToggleSwitch,
+    card,
+    card_title,
+    hint_label,
+    page_title,
+    set_hint,
+)
 
 AUTO_MODEL_LABEL = "Automatisch – large-v3-turbo mit NVIDIA-GPU, sonst small"
 DEFAULT_MICROPHONE_LABEL = "Windows-Standard"
 WAITING_TEXT = "Taste(n) drücken und loslassen …"
-SAVED_TEXT = "✓ Gespeichert"
-SAVED_VISIBLE_MS = 2500
-SAVED_FADE_MS = 600
 LABEL_WIDTH = 210  # gleiche Breite in allen Karten, damit die Felder bündig stehen
 
 
@@ -112,19 +116,7 @@ class SettingsPage(QWidget):
             ("Mikrofon", self.microphone_box),
         )
 
-        self.saved_label = QLabel(SAVED_TEXT)
-        self.saved_label.setObjectName("success")
-        self._saved_opacity = QGraphicsOpacityEffect(self.saved_label)
-        self.saved_label.setGraphicsEffect(self._saved_opacity)
-        self.saved_label.setVisible(False)
-        self._fade = QPropertyAnimation(self._saved_opacity, b"opacity", self)
-        self._fade.setDuration(SAVED_FADE_MS)
-        self._fade.setStartValue(1.0)
-        self._fade.setEndValue(0.0)
-        self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._fade.finished.connect(lambda: self.saved_label.setVisible(False))
-        self._fade_delay = QTimer(self, singleShot=True, interval=SAVED_VISIBLE_MS)
-        self._fade_delay.timeout.connect(self._fade.start)
+        self.saved_label = SavedIndicator()
 
         self.discard_button = QPushButton("Verwerfen")
         self.discard_button.clicked.connect(self.reset)
@@ -229,10 +221,7 @@ class SettingsPage(QWidget):
 
     def show_saved(self) -> None:
         """Bestätigung nach erfolgreichem Speichern: grün einblenden, dann verblassen."""
-        self._fade.stop()
-        self._saved_opacity.setOpacity(1.0)
-        self.saved_label.setVisible(True)
-        self._fade_delay.start()
+        self.saved_label.flash()
 
     def set_captured_hotkey(self, hotkey: str) -> None:
         """Vom Controller aufgerufen, sobald eine Tastenkombination losgelassen wurde."""
@@ -254,9 +243,7 @@ class SettingsPage(QWidget):
         self.save_button.setEnabled(changed)
         self.discard_button.setEnabled(changed)
         if changed:  # eine alte Bestätigung passt nicht mehr zum aktuellen Stand
-            self._fade_delay.stop()
-            self._fade.stop()
-            self.saved_label.setVisible(False)
+            self.saved_label.clear()
 
     def _on_hotkey_clicked(self) -> None:
         if self.hotkey_button.waiting:

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from plaudertaste import __version__
 from plaudertaste.app import Status
+from plaudertaste.dictionary_page import DictionaryPage
 from plaudertaste.history import Entry, History
 from plaudertaste.settings_page import SettingsPage
 from plaudertaste.stats import TYPING_WPM, Stats, Totals
@@ -38,13 +39,15 @@ class Page(IntEnum):
     START = 0
     HISTORY = 1
     STATS = 2
-    SETTINGS = 3
+    DICTIONARY = 3
+    SETTINGS = 4
 
 
 _PAGE_NAMES = {
     Page.START: "Start",
     Page.HISTORY: "Verlauf",
     Page.STATS: "Statistik",
+    Page.DICTIONARY: "Wörterbuch",
     Page.SETTINGS: "Einstellungen",
 }
 
@@ -308,7 +311,12 @@ class MainWindow(QMainWindow):
     hidden_to_tray = Signal()
 
     def __init__(
-        self, icon: QIcon, settings_page: SettingsPage, history: History, stats: Stats
+        self,
+        icon: QIcon,
+        settings_page: SettingsPage,
+        dictionary_page: DictionaryPage,
+        history: History,
+        stats: Stats,
     ) -> None:
         super().__init__()
         self.setWindowTitle("Plaudertaste")
@@ -320,16 +328,24 @@ class MainWindow(QMainWindow):
         self.history_page = HistoryPage(history, QGuiApplication.clipboard().setText)
         self.stats_page = StatsPage(stats)
         self.settings_page = settings_page
+        self.dictionary_page = dictionary_page
         self.download_banner = DownloadBanner()
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("nav")
         self.pages = QStackedWidget()
         for page, widget in zip(
-            Page, (self.start_page, self.history_page, self.stats_page, self.settings_page)
+            Page,
+            (
+                self.start_page,
+                self.history_page,
+                self.stats_page,
+                self.dictionary_page,
+                self.settings_page,
+            ),
         ):
             self.sidebar.addItem(_PAGE_NAMES[page])
-            # Verlauf und Einstellungen scrollen selbst (mit fester Fußleiste); Start und
+            # Verlauf, Wörterbuch, Einstellungen scrollen selbst (feste Kopf-/Fußzeile); Start und
             # Statistik scrollen als Ganzes, statt bei kleinem Fenster gequetscht zu werden.
             scrollable = page in (Page.START, Page.STATS)
             self.pages.addWidget(_padded(widget, scrollable))

@@ -24,6 +24,8 @@ from plaudertaste.app import MIC_UNAVAILABLE, App, Notice, Status
 from plaudertaste.catalog import AUTO, MODELS, language_display
 from plaudertaste.config import Config, ConfigError, load_config, save_config
 from plaudertaste.devices import list_microphones
+from plaudertaste.dictionary import Dictionary, DictionaryError, load_dictionary, save_dictionary
+from plaudertaste.dictionary_page import DictionaryPage
 from plaudertaste.history import History
 from plaudertaste.hotkey import (
     HotkeyCapture,
@@ -100,6 +102,7 @@ class Controller(QObject):
         self._config_before_model_change: Config | None = None  # für Rückfall bei Ladefehler
         self._tray_hint_shown = False
         self._problems: dict[str, tuple[str, str]] = {}  # bestehende Probleme für die Startseite
+        self._dictionary = Dictionary()
 
         self.tray = Tray(
             describe_hotkey(config.hotkey),
@@ -109,7 +112,10 @@ class Controller(QObject):
             log_file,
         )
         self.settings_page = SettingsPage()
-        self.window = MainWindow(make_app_icon(), self.settings_page, self._history, self._stats)
+        self.dictionary_page = DictionaryPage()
+        self.window = MainWindow(
+            make_app_icon(), self.settings_page, self.dictionary_page, self._history, self._stats
+        )
 
         self.tray.quit_requested.connect(self.shutdown)
         self.tray.open_requested.connect(lambda: self.show_window(Page.START))
@@ -119,6 +125,7 @@ class Controller(QObject):
         self.window.hidden_to_tray.connect(self._on_window_hidden)
         self.window.sidebar.currentRowChanged.connect(self._on_page_changed)
         self.settings_page.save_requested.connect(self.apply_settings)
+        self.dictionary_page.changed.connect(self._on_dictionary_changed)
         self.settings_page.capture_requested.connect(self._start_hotkey_capture)
         self.settings_page.capture_cancelled.connect(self._stop_hotkey_capture)
         self.status_changed.connect(self._on_status)
@@ -131,6 +138,7 @@ class Controller(QObject):
         self.window.download_banner.cancel_requested.connect(self.cancel_download)
         self.hotkey_captured.connect(self._on_hotkey_captured)
 
+        self._load_dictionary()
         self._refresh_start_page()
         self.window.start_page.set_status(Status.LOADING)
         self.window.refresh()
@@ -231,6 +239,7 @@ class Controller(QObject):
             on_status=self.status_changed.emit,
             on_dictation=self.dictation_finished.emit,
             on_notice=self.notice.emit,
+            dictionary=self._dictionary,
         )
         self._app.start()
         self._activate_push_to_talk()
@@ -342,6 +351,36 @@ class Controller(QObject):
         self.window.start_page.set_problems(list(self._problems.values()))
         if is_new and key != "mic":  # "mic" meldet bereits _on_notice
             self.tray.showMessage(TITLE, problem[0], QSystemTrayIcon.MessageIcon.Warning, 5000)
+
+    # --- Wörterbuch ---
+
+    def _load_dictionary(self) -> None:
+        path = paths.dictionary_file()
+        try:
+            self._dictionary = load_dictionary(path)
+        except DictionaryError as exc:
+            # Kaputte Datei aufheben statt beim nächsten Speichern zu überschreiben.
+            backup = path.with_suffix(".defekt.toml")
+            path.replace(backup)
+            log.error("%s – gesichert als %s", exc, backup)
+            self._set_problem(
+                "dictionary",
+                ("Wörterbuch-Datei fehlerhaft", f"Sie wurde als „{backup.name}“ gesichert, "
+                 "das Wörterbuch startet leer. Details in der Logdatei."),
+            )
+        self.dictionary_page.set_dictionary(self._dictionary)
+
+    def _on_dictionary_changed(self, dictionary: Dictionary) -> None:
+        self._dictionary = dictionary
+        if self._app is not None:
+            self._app.set_dictionary(dictionary)
+        try:
+            save_dictionary(paths.dictionary_file(), dictionary)
+        except OSError:
+            log.exception("Wörterbuch konnte nicht gespeichert werden")
+            return
+        self._set_problem("dictionary", None)
+        self.dictionary_page.show_saved()
 
     def _on_dictation_finished(self, text: str, seconds: float) -> None:
         self._history.add(text, seconds)
