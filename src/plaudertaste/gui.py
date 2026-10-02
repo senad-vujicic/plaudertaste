@@ -44,6 +44,7 @@ from plaudertaste.network import guard
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
 from plaudertaste.settings_page import DEFAULT_MICROPHONE_LABEL, Settings, SettingsPage
+from plaudertaste.setup_wizard import SetupWizard
 from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
 from plaudertaste.stats import Stats
@@ -102,6 +103,9 @@ class Controller(QObject):
         self._config_before_model_change: Config | None = None  # für Rückfall bei Ladefehler
         self._tray_hint_shown = False
         self._problems: dict[str, tuple[str, str]] = {}  # bestehende Probleme für die Startseite
+        self.wizard: SetupWizard | None = None  # nur beim allerersten Start
+        # Wer gerade eine Tastenkombination "bestellt" hat: Einstellungen oder Assistent
+        self._capture_receiver: SettingsPage | SetupWizard | None = None
         self._dictionary = Dictionary()
 
         self.tray = Tray(
@@ -126,7 +130,9 @@ class Controller(QObject):
         self.window.sidebar.currentRowChanged.connect(self._on_page_changed)
         self.settings_page.save_requested.connect(self.apply_settings)
         self.dictionary_page.changed.connect(self._on_dictionary_changed)
-        self.settings_page.capture_requested.connect(self._start_hotkey_capture)
+        self.settings_page.capture_requested.connect(
+            lambda: self._start_hotkey_capture(self.settings_page)
+        )
         self.settings_page.capture_cancelled.connect(self._stop_hotkey_capture)
         self.status_changed.connect(self._on_status)
         self.notice.connect(self._on_notice)
@@ -151,9 +157,11 @@ class Controller(QObject):
         self.window.start_page.set_status(Status.LOADING)
         self.window.refresh()
 
-    def start(self, show_window: bool) -> None:
+    def start(self, show_window: bool, first_start: bool = False) -> None:
         self.tray.show()
-        if show_window:
+        if first_start:
+            self._open_setup_wizard()
+        elif show_window:
             self.show_window(Page.START)
         self._refresh_autostart_entry()
         self._listener = start_listener(self._on_key_press, self._on_key_release, self._swallow)
@@ -236,8 +244,11 @@ class Controller(QObject):
         self._loader.load(self._config)
 
     def _on_download_progress(self, model: str, done: int, total: int) -> None:
+        percent = done * 100 // total if total else 0
         self.window.download_banner.show_progress(model, done, total)
-        self.tray.set_download_progress(model, done * 100 // total if total else 0)
+        self.tray.set_download_progress(model, percent)
+        if self.wizard is not None:
+            self.wizard.show_model_progress(model, percent)
         if done >= total:
             log.info("Modell '%s' heruntergeladen.", model)
 
@@ -268,6 +279,11 @@ class Controller(QObject):
         self._app.start()
         self._activate_push_to_talk()
         log.info("Bereit! Halte [%s] gedrückt und sprich.", describe_hotkey(self._config.hotkey))
+        if self.wizard is not None:
+            where = (
+                "auf der Grafikkarte (schnell)" if choice.device == "cuda" else "auf dem Prozessor"
+            )
+            self.wizard.show_model_ready(f"{choice.name} {where}")
 
     def _on_model_failed(self, message: str, details: str) -> None:
         self.window.download_banner.hide()
@@ -489,16 +505,39 @@ class Controller(QObject):
         )
         self._refresh_connections()
 
-    def _start_hotkey_capture(self) -> None:
+    def _start_hotkey_capture(self, receiver: SettingsPage | SetupWizard) -> None:
         # Diktieren pausieren, sonst würde der gedrückte Hotkey gleich eine Aufnahme starten.
+        self._capture_receiver = receiver
         self._key_target = HotkeyCapture(self.hotkey_captured.emit)
 
     def _stop_hotkey_capture(self) -> None:
+        self._capture_receiver = None
         self._key_target = self._push_to_talk
 
     def _on_hotkey_captured(self, hotkey: str) -> None:
+        receiver = self._capture_receiver
         self._stop_hotkey_capture()
-        self.settings_page.set_captured_hotkey(hotkey)
+        if receiver is not None:
+            receiver.set_captured_hotkey(hotkey)
+
+    # --- Einrichtungsassistent (nur beim allerersten Start) ---
+
+    def _open_setup_wizard(self) -> None:
+        self.wizard = SetupWizard(
+            make_app_icon(), self._config, autostart.is_enabled(), list_microphones()
+        )
+        self.wizard.settings_changed.connect(self.apply_settings)
+        self.wizard.capture_requested.connect(lambda: self._start_hotkey_capture(self.wizard))
+        self.wizard.capture_cancelled.connect(self._stop_hotkey_capture)
+        self.wizard.finished_setup.connect(self._on_setup_finished)
+        self.wizard.show()
+        self.wizard.raise_()
+        self.wizard.activateWindow()
+
+    def _on_setup_finished(self) -> None:
+        log.info("Einrichtung abgeschlossen.")
+        self.wizard = None
+        self.show_window(Page.START)
 
     def _refresh_autostart_entry(self) -> None:
         """Einen vorhandenen Autostart-Eintrag auf den aktuellen Befehl bringen
@@ -591,6 +630,7 @@ def run(log_file: Path, show_window: bool = True) -> int:
 
     config_path = paths.config_file()
     try:
+        first_start = not config_path.exists()  # vor load_config: das legt die Datei an
         config = load_config(config_path)
         parse_hotkey(config.hotkey)  # früh prüfen, damit ein Tippfehler klar gemeldet wird
     except (ConfigError, ValueError) as exc:
@@ -602,7 +642,7 @@ def run(log_file: Path, show_window: bool = True) -> int:
     log.info("Konfiguration: %s", config_path)
 
     controller = Controller(config, log_file)
-    controller.start(show_window)
+    controller.start(show_window, first_start)
 
     # Strg+C in der Konsole: Qt blockiert Python-Signale, solange die Ereignisschleife
     # läuft. Ein kurzer Timer gibt Python regelmäßig die Gelegenheit, sie zu verarbeiten.

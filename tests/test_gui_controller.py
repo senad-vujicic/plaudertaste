@@ -119,7 +119,7 @@ def test_failed_model_change_restores_previous_model(
 def test_hotkey_capture_pauses_dictation(controller: gui.Controller) -> None:
     push_to_talk = controller._key_target
 
-    controller._start_hotkey_capture()
+    controller._start_hotkey_capture(controller.settings_page)
     assert isinstance(controller._key_target, HotkeyCapture)
 
     controller._on_hotkey_captured("f9")
@@ -403,10 +403,31 @@ def test_connections_appear_in_settings(controller: gui.Controller) -> None:
 
 
 def test_model_switch_does_not_abort_hotkey_capture(controller: gui.Controller) -> None:
-    controller._start_hotkey_capture()
+    controller._start_hotkey_capture(controller.settings_page)
 
     controller._activate_push_to_talk()  # z. B. weil gerade ein neues Modell fertig ist
 
     assert isinstance(controller._key_target, HotkeyCapture)
     controller._on_hotkey_captured("f9")
     assert controller._key_target is controller._push_to_talk
+
+
+def test_first_start_opens_wizard_and_routes_hotkey_to_it(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gui, "list_microphones", lambda: [])
+    controller._open_setup_wizard()
+    wizard = controller.wizard
+    assert wizard is not None
+
+    wizard._go(wizard.HOTKEY)
+    wizard.hotkey_button.click()  # Assistent "bestellt" eine Taste
+    controller._on_key_press("f9")
+    controller._on_key_release("f9")
+
+    assert wizard.hotkey_button.hotkey == "f9"
+    assert controller._config.hotkey == "f9"  # sofort übernommen
+
+    wizard.skip_button.click()
+    assert controller.wizard is None
+    assert controller.window.isVisible()
