@@ -14,7 +14,7 @@ import numpy as np
 
 from plaudertaste.dictionary import Dictionary
 from plaudertaste.fillers import remove_fillers
-from plaudertaste.paster import paste_text
+from plaudertaste.paster import erase_before_cursor, paste_text
 from plaudertaste.recorder import Recorder, RecorderError
 from plaudertaste.transcriber import Transcriber
 from plaudertaste.voice_commands import apply_voice_commands
@@ -51,6 +51,10 @@ PASTE_FAILED = Notice(
     "Text konnte nicht eingefügt werden – er liegt im Verlauf zum Kopieren.", serious=True
 )
 PROCESSING_FAILED = Notice("Fehler bei der Spracherkennung – Details in der Logdatei.", serious=True)
+UNDONE = Notice("Letztes Diktat gelöscht.")
+NOTHING_TO_UNDO = Notice("Nichts zum Rückgängigmachen – seit dem letzten Diktat wurde getippt.")
+
+_UNDO = object()  # Auftrag in der Warteschlange: letztes Diktat löschen
 
 
 class App:
@@ -67,6 +71,7 @@ class App:
         transcriber: Transcriber,
         recorder: Recorder,
         paste: Callable[[str], None] = paste_text,
+        erase: Callable[[int], None] = erase_before_cursor,
         on_status: Callable[[Status], None] = lambda status: None,
         on_dictation: Callable[[str, float], None] = lambda text, seconds: None,
         on_notice: Callable[[Notice], None] = lambda notice: None,
@@ -77,6 +82,9 @@ class App:
         self._transcriber = transcriber
         self._recorder = recorder
         self._paste = paste
+        self._erase = erase
+        # Länge des zuletzt eingefügten Textes – 0, wenn Rückgängig nicht (mehr) sicher ist
+        self._undoable_length = 0
         self._on_status = on_status
         self._on_dictation = on_dictation
         self._on_notice = on_notice
@@ -84,7 +92,7 @@ class App:
         self.set_dictionary(dictionary)
         self.voice_commands = voice_commands
         self.remove_fillers = remove_fillers
-        self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
+        self._jobs: queue.Queue[np.ndarray | object | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
         # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
         # damit eine neue Aufnahme nicht vom Ende der vorherigen überschrieben wird.
@@ -133,6 +141,14 @@ class App:
         self._update(recording=False, pending_delta=1)
         self._jobs.put(audio)
 
+    def on_undo(self) -> None:
+        """Hotkey + Rücktaste: Das Löschen übernimmt der Worker, nach allen offenen Diktaten."""
+        self._jobs.put(_UNDO)
+
+    def forget_last_dictation(self) -> None:
+        """Nach eigenem Tippen steht der Cursor evtl. woanders – dann nichts mehr löschen."""
+        self._undoable_length = 0
+
     def on_cancel(self) -> None:
         self._recorder.stop()
         self._update(recording=False)
@@ -141,9 +157,25 @@ class App:
     # --- Worker-Thread ---
 
     def _work(self) -> None:
-        while (audio := self._jobs.get()) is not None:
-            self._process(audio)
-            self._update(pending_delta=-1)
+        while (job := self._jobs.get()) is not None:
+            if job is _UNDO:
+                self._undo_last()
+            else:
+                self._process(job)  # type: ignore[arg-type]
+                self._update(pending_delta=-1)
+
+    def _undo_last(self) -> None:
+        if not self._undoable_length:
+            self._on_notice(NOTHING_TO_UNDO)
+            return
+        try:
+            self._erase(self._undoable_length)
+        except Exception:
+            log.exception("Rückgängig fehlgeschlagen")
+            return
+        log.info("Letztes Diktat gelöscht (%d Zeichen).", self._undoable_length)
+        self._undoable_length = 0
+        self._on_notice(UNDONE)
 
     def _process(self, audio: np.ndarray) -> None:
         started = time.perf_counter()
@@ -175,7 +207,9 @@ class App:
         except Exception:
             log.exception("Einfügen fehlgeschlagen")
             self._on_notice(PASTE_FAILED)
+            self._undoable_length = 0
         else:
+            self._undoable_length = len(text + separator)
             # Datenschutz: nur die Länge loggen, nie den diktierten Text.
             log.info("Eingefügt: %d Zeichen in %.2f s", len(text), time.perf_counter() - started)
         # Auch bei gescheitertem Einfügen: Der Text soll im Verlauf zu finden sein.

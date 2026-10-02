@@ -190,3 +190,11 @@ def test_fillers_switch() -> None:
     page.fillers_check.setChecked(False)
 
     assert page.settings().config.remove_fillers is False
+
+
+def test_update_check_switch() -> None:
+    page = make_page(Config(check_updates=True))
+
+    page.updates_check.setChecked(False)
+
+    assert page.settings().config.check_updates is False

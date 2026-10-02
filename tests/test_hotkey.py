@@ -11,11 +11,25 @@ from plaudertaste.hotkey import (
 )
 
 
+class Clock:
+    """Steuerbare Uhr. Ohne Zutun vergeht pro Abfrage 1 s – jeder Tastendruck wirkt dann
+    "lange gehalten", also kein Doppeltippen."""
+
+    def __init__(self, step: float = 1.0) -> None:
+        self.now = 0.0
+        self.step = step
+
+    def __call__(self) -> float:
+        self.now += self.step
+        return self.now
+
+
 class Recorder:
     """Merkt sich, welche Callbacks der Automat in welcher Reihenfolge aufruft."""
 
     def __init__(self) -> None:
         self.events: list[str] = []
+        self.clock = Clock()
 
     def make(self, combo: str) -> PushToTalk:
         return PushToTalk(
@@ -23,6 +37,9 @@ class Recorder:
             on_start=lambda: self.events.append("start"),
             on_stop=lambda: self.events.append("stop"),
             on_cancel=lambda: self.events.append("cancel"),
+            on_hands_free=lambda: self.events.append("hands_free"),
+            on_undo=lambda: self.events.append("undo"),
+            clock=self.clock,
         )
 
 
@@ -211,3 +228,102 @@ def test_bad_hotkeys_are_explained(text: str, hint: str) -> None:
     problem = hotkey_problem(text)
 
     assert problem is not None and hint in problem
+
+
+
+# --- Doppeltippen (Freihand) ---
+
+
+def tap(ptt: PushToTalk, clock: Clock, hold: float = 0.1, gap: float = 0.0) -> None:
+    clock.now += gap
+    clock.step = 0
+    ptt.press("ctrl_r")
+    clock.now += hold
+    ptt.release("ctrl_r")
+
+
+def test_double_tap_starts_hands_free_and_tap_stops_it(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+
+    tap(ptt, log.clock)
+    tap(ptt, log.clock, gap=0.2)
+    assert ptt.is_hands_free
+    assert log.events == ["start", "stop", "start", "hands_free"]
+
+    tap(ptt, log.clock, gap=30)  # später: einmal tippen beendet
+    assert not ptt.is_recording
+    assert log.events[-1] == "stop"
+
+
+def test_two_slow_taps_are_no_double_tap(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+
+    tap(ptt, log.clock)
+    tap(ptt, log.clock, gap=1.0)  # Pause zu lang
+
+    assert not ptt.is_hands_free
+    assert log.events == ["start", "stop", "start", "stop"]
+
+
+def test_long_hold_after_tap_is_normal_dictation(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+
+    tap(ptt, log.clock)
+    tap(ptt, log.clock, hold=3.0, gap=0.2)  # zweites Mal gehalten = normales Diktat
+
+    assert not ptt.is_hands_free
+    assert log.events == ["start", "stop", "start", "stop"]
+
+
+def test_typing_during_hands_free_is_ignored(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+    tap(ptt, log.clock)
+    tap(ptt, log.clock, gap=0.2)
+
+    ptt.press("a")
+    ptt.release("a")
+
+    assert ptt.is_hands_free
+    assert "cancel" not in log.events
+
+
+def test_hands_free_can_be_stopped_from_outside(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+    tap(ptt, log.clock)
+    tap(ptt, log.clock, gap=0.2)
+
+    ptt.stop_hands_free()
+    ptt.stop_hands_free()  # zweimal ist harmlos
+
+    assert log.events.count("stop") == 2  # erstes Tippen + Notstopp
+    assert not ptt.is_recording
+
+
+# --- Rückgängig: Hotkey halten + Rücktaste ---
+
+
+def test_backspace_while_holding_requests_undo_after_release(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+
+    ptt.press("ctrl_r")
+    assert ptt.wants_to_swallow("backspace")
+    ptt.press("backspace")
+    ptt.release("backspace")
+    assert log.events == ["start", "cancel"]  # noch kein undo – Strg ist noch gehalten
+
+    ptt.release("ctrl_r")
+
+    assert log.events == ["start", "cancel", "undo"]
+    assert not ptt.wants_to_swallow("backspace")
+
+
+def test_other_shortcut_does_not_undo(log: Recorder) -> None:
+    ptt = log.make("ctrl_r")
+
+    ptt.press("ctrl_r")
+    assert not ptt.wants_to_swallow("c")
+    ptt.press("c")
+    ptt.release("c")
+    ptt.release("ctrl_r")
+
+    assert log.events == ["start", "cancel"]

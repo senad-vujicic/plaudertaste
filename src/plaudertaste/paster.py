@@ -21,6 +21,15 @@ def press_ctrl_v() -> None:
         keyboard.tap("v")
 
 
+def erase_before_cursor(count: int) -> None:
+    """Markiert `count` Zeichen links vom Cursor und löscht sie (ein Rückgängig-Schritt)."""
+    keyboard = Controller()
+    with keyboard.pressed(Key.shift):
+        for _ in range(count):
+            keyboard.tap(Key.left)
+    keyboard.tap(Key.backspace)
+
+
 def paste_text(
     text: str,
     clipboard: Clipboard = pyperclip,

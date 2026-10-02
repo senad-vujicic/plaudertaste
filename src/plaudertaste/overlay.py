@@ -24,6 +24,7 @@ BAR_COUNT = 16
 FRAME_MS = 33  # ~30 Bilder pro Sekunde
 MESSAGE_MS = 4000  # so lange bleibt eine Meldung stehen
 MAX_MESSAGE_WIDTH = 640
+HANDS_FREE_EXTRA = 84  # Platz für den Hinweis "Freihand"
 
 BACKGROUND = QColor(28, 28, 30, 235)
 BORDER = QColor(255, 255, 255, 40)
@@ -71,6 +72,7 @@ class Overlay(QWidget):
         self._timer.setInterval(FRAME_MS)
         self._timer.timeout.connect(self._tick)
         self._message: str | None = None
+        self._hands_free = False
         self._message_timer = QTimer(self, singleShot=True, interval=MESSAGE_MS)
         self._message_timer.timeout.connect(self._hide_message)
 
@@ -99,6 +101,17 @@ class Overlay(QWidget):
         self._status = status
         self.show()
         self._timer.start()
+
+    def set_hands_free(self, hands_free: bool) -> None:
+        """Zeigt "Freihand" an – dann muss man zum Beenden einmal tippen statt loslassen."""
+        if hands_free == self._hands_free:
+            return
+        self._hands_free = hands_free
+        if self._message is None:
+            self.setFixedSize(WIDTH + HANDS_FREE_EXTRA if hands_free else WIDTH, HEIGHT)
+            if self.isVisible():
+                self._move_to_current_screen()
+        self.update()
 
     def show_message(self, text: str) -> None:
         """Rote Kurzmeldung, verschwindet nach ein paar Sekunden von selbst."""
@@ -182,7 +195,15 @@ class Overlay(QWidget):
 
         painter.setPen(TEXT)
         painter.setFont(QFont("Segoe UI", 10))
-        text_area = QRectF(WIDTH - 62, 0, 46, HEIGHT)
+        if self._hands_free:
+            painter.setPen(RED)
+            painter.drawText(
+                QRectF(self.width() - 140, 0, 76, HEIGHT),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                "Freihand",
+            )
+            painter.setPen(TEXT)
+        text_area = QRectF(self.width() - 62, 0, 46, HEIGHT)
         painter.drawText(
             text_area,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,

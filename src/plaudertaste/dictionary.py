@@ -55,6 +55,10 @@ class Dictionary:
         for replacement in sorted(self.replacements, key=lambda r: -len(r.spoken)):
             words = (re.escape(word) for word in replacement.spoken.split())
             pattern = r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)"
+            if "\n" in replacement.written:
+                # Textbaustein (z. B. Signatur): Whispers Satzzeichen dahinter ("Meine
+                # Signatur.") fällt weg, sonst stünde es einsam unter dem Baustein.
+                pattern += r"[.,;:!?]?"
             # Funktion statt Text als Ersatz: so werden "\1" o. Ä. im Ersatz nicht ausgewertet.
             text = re.sub(pattern, lambda _: replacement.written, text, flags=re.IGNORECASE)
         return text

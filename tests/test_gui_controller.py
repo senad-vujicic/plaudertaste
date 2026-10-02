@@ -27,6 +27,8 @@ class FakeApp:
     def on_start(self) -> None: ...
     def on_stop(self) -> None: ...
     def on_cancel(self) -> None: ...
+    def on_undo(self) -> None: ...
+    def forget_last_dictation(self) -> None: ...
 
 
 @pytest.fixture
@@ -127,6 +129,8 @@ def test_dictation_updates_history_stats_and_start_page(controller: gui.Controll
     assert controller.window.start_page.words_value.text() == "3"
     assert controller.window.start_page.dictations_value.text() == "1"
     assert controller.window.stats_page.words(0) == "3"  # Spalte "Heute"
+    assert controller.window.start_page.last_text.text() == "Hallo liebe Welt"
+    assert controller.window.start_page.last_copy_button.isEnabled()
 
 
 def test_closing_window_hides_it_and_hints_once(
@@ -330,3 +334,38 @@ def test_voice_commands_setting_reaches_running_app(controller: gui.Controller) 
 
     assert controller._app.voice_commands is False  # type: ignore[union-attr]
     assert controller._app.remove_fillers is False  # type: ignore[union-attr]
+
+
+def test_backspace_is_swallowed_only_while_hotkey_held(controller: gui.Controller) -> None:
+    controller._on_key_press("ctrl_r")
+    assert controller._swallow("backspace")
+    assert not controller._swallow("a")
+    controller._on_key_release("ctrl_r")
+
+    assert not controller._swallow("backspace")
+
+
+def test_forgotten_hands_free_is_stopped(controller: gui.Controller) -> None:
+    for _ in range(2):  # zweimal schnell tippen
+        controller._on_key_press("ctrl_r")
+        controller._on_key_release("ctrl_r")
+    assert controller._push_to_talk.is_hands_free  # type: ignore[union-attr]
+    assert controller._hands_free_timer.isActive()
+
+    controller._stop_forgotten_hands_free()  # was der Timer nach 5 Minuten auslöst
+
+    assert not controller._push_to_talk.is_recording  # type: ignore[union-attr]
+
+
+def test_update_is_shown_on_start_page(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from plaudertaste.updates import Update
+
+    monkeypatch.setattr(controller.tray, "showMessage", lambda *args: None)
+
+    controller._on_update_available(Update("0.2.0", "https://github.com/senad-vujicic/plaudertaste/releases/tag/v0.2.0"))
+
+    page = controller.window.start_page
+    assert not page.update_card.isHidden()
+    assert "0.2.0" in page.update_label.text()

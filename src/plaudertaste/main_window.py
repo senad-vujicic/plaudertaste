@@ -8,8 +8,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from enum import IntEnum
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QIcon
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -59,8 +59,9 @@ def _big_number(text: str = "") -> QLabel:
 
 
 class StartPage(QWidget):
-    def __init__(self) -> None:
+    def __init__(self, copy: Callable[[str], None]) -> None:
         super().__init__()
+        self._copy = copy
         self.status_dot = QLabel("●")
         self.status_text = QLabel()
         self.status_text.setObjectName("pageTitle")
@@ -85,6 +86,20 @@ class StartPage(QWidget):
         ):
             tiles.addWidget(card(muted_label(title), value, spacing=4))
 
+        self.last_time = muted_label()
+        self.last_text = QLabel()
+        self.last_text.setWordWrap(True)
+        self.last_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.last_copy_button = QPushButton("Kopieren")
+        self.last_copy_button.clicked.connect(lambda: self._copy(self._last_entry_text))
+        self._last_entry_text = ""
+        last_header = QHBoxLayout()
+        last_header.addWidget(card_title("Letztes Diktat"))
+        last_header.addWidget(self.last_time)
+        last_header.addStretch()
+        last_header.addWidget(self.last_copy_button)
+        self.set_last_dictation(None)
+
         self.model_label = QLabel()
         self.language_label = QLabel()
         self.microphone_label = QLabel()
@@ -106,11 +121,27 @@ class StartPage(QWidget):
         self.problems_card.setObjectName("problemCard")
         self.problems_card.setVisible(False)
 
+        self.update_label = QLabel()
+        self.update_label.setWordWrap(True)
+        self.update_button = QPushButton("Zur Download-Seite")
+        self.update_button.setObjectName("primary")
+        self._update_url = ""
+        self.update_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(self._update_url))
+        )
+        update_row = QHBoxLayout()
+        update_row.addWidget(self.update_label, 1)
+        update_row.addWidget(self.update_button)
+        self.update_card = card(update_row)
+        self.update_card.setVisible(False)
+
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.addWidget(card(status_row, self.instructions))
         layout.addWidget(self.problems_card)
+        layout.addWidget(self.update_card)
         layout.addLayout(tiles)
+        layout.addWidget(card(last_header, self.last_text, spacing=6))
         layout.addWidget(card(card_title("Aktuelle Einstellungen"), details))
         layout.addStretch()
         layout.addWidget(
@@ -129,6 +160,20 @@ class StartPage(QWidget):
         self.model_label.setText(model)
         self.language_label.setText(language)
         self.microphone_label.setText(microphone)
+
+    def set_last_dictation(self, entry: Entry | None) -> None:
+        """Nur im Arbeitsspeicher – wie der Verlauf."""
+        self._last_entry_text = entry.text if entry else ""
+        self.last_text.setText(entry.text if entry else "Noch kein Diktat seit dem Start.")
+        self.last_text.setEnabled(entry is not None)  # leer: gedämpft
+        self.last_time.setText(f"{entry.time:%H:%M}" if entry else "")
+        self.last_copy_button.setEnabled(entry is not None)
+
+    def show_update(self, version: str, url: str) -> None:
+        self._update_url = url
+        self.update_label.setText(f"<b>Neue Version {version} verfügbar.</b> Deine Einstellungen "
+                                  "und dein Wörterbuch bleiben beim Aktualisieren erhalten.")
+        self.update_card.setVisible(True)
 
     def set_problems(self, problems: list[tuple[str, str]]) -> None:
         """Bestehende Probleme als (Überschrift, Lösungstipp) – leer = Karte ausblenden."""
@@ -324,7 +369,7 @@ class MainWindow(QMainWindow):
         self.resize(900, 640)
         self.setMinimumSize(760, 520)
 
-        self.start_page = StartPage()
+        self.start_page = StartPage(QGuiApplication.clipboard().setText)
         self.history_page = HistoryPage(history, QGuiApplication.clipboard().setText)
         self.stats_page = StatsPage(stats)
         self.settings_page = settings_page

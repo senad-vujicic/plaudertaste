@@ -37,6 +37,7 @@ def test_default_file_is_valid_toml_with_comments() -> None:
         "overlay": True,
         "voice_commands": True,
         "remove_fillers": True,
+        "check_updates": True,
     }
 
 

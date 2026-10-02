@@ -348,3 +348,49 @@ def test_dictation_of_only_fillers_pastes_nothing() -> None:
 
     assert pasted == []
     assert reported == []  # kein leerer Eintrag im Verlauf
+
+
+def test_undo_erases_exactly_the_last_dictation() -> None:
+    from plaudertaste.app import UNDONE
+
+    erased: list[int] = []
+    notices: list[Notice] = []
+    app = App(
+        FakeTranscriber(["Erstes.", "Hallo Welt"]),
+        FakeRecorder(),
+        paste=lambda text: None,
+        erase=erased.append,
+        on_notice=notices.append,
+    )  # type: ignore[arg-type]
+    app.start()
+    for _ in range(2):
+        app.on_start()
+        app.on_stop()
+    app.on_undo()
+    app.on_undo()  # zweites Mal: nichts mehr da
+    app.stop()
+
+    assert erased == [len("Hallo Welt ")]  # nur das letzte, inkl. Leerzeichen
+    assert notices[0] is UNDONE
+    assert notices[1].text.startswith("Nichts zum Rückgängigmachen")
+
+
+def test_typing_after_dictation_blocks_undo() -> None:
+    pasted = threading.Event()
+    erased: list[int] = []
+    app = App(
+        FakeTranscriber(["Hallo"]),
+        FakeRecorder(),
+        paste=lambda text: pasted.set(),
+        erase=erased.append,
+    )  # type: ignore[arg-type]
+    app.start()
+    app.on_start()
+    app.on_stop()
+    assert pasted.wait(timeout=5)  # erst wenn wirklich eingefügt wurde …
+
+    app.forget_last_dictation()  # … tippt der Nutzer selbst
+    app.on_undo()
+    app.stop()
+
+    assert erased == []

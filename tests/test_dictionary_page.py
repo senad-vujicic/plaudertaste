@@ -36,17 +36,28 @@ def test_duplicate_term_is_not_reported_as_change() -> None:
     assert changes == []
 
 
-def test_add_replacement_with_enter_in_both_fields() -> None:
+def test_add_replacement() -> None:
     page, changes = make_page()
 
     page.spoken_input.setText("mfg")
     page.spoken_input.returnPressed.emit()  # zweites Feld noch leer -> nur weiterspringen
     assert changes == []
-    page.written_input.setText("Mit freundlichen Grüßen")
-    page.written_input.returnPressed.emit()
+    page.written_input.setPlainText("Mit freundlichen Grüßen")
+    page.spoken_input.returnPressed.emit()
 
     assert changes[-1].replacements == (Replacement("mfg", "Mit freundlichen Grüßen"),)
     assert page.replacement_table.rowCount() == 1
+
+
+def test_multiline_snippet_is_shown_on_one_row() -> None:
+    page, changes = make_page()
+    page.spoken_input.setText("meine Signatur")
+    page.written_input.setPlainText("Viele Grüße\nSenad Vujicic")
+
+    page.spoken_input.returnPressed.emit()
+
+    assert changes[-1].replacements[0].written == "Viele Grüße\nSenad Vujicic"
+    assert page.replacement_table.item(0, 1).text() == "Viele Grüße ⏎ Senad Vujicic"
 
 
 def test_remove_replacement() -> None:

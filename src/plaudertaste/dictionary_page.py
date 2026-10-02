@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -67,10 +68,14 @@ class DictionaryPage(QWidget):
         # --- Ersetzungen ---
         self.spoken_input = QLineEdit()
         self.spoken_input.setPlaceholderText("Gesagt, z. B. mfg")
-        self.written_input = QLineEdit()
-        self.written_input.setPlaceholderText("Geschrieben, z. B. Mit freundlichen Grüßen")
-        for field in (self.spoken_input, self.written_input):
-            field.returnPressed.connect(self._add_replacement)
+        # Mehrzeilig, damit auch Textbausteine wie eine komplette Signatur hineinpassen.
+        self.written_input = QPlainTextEdit()
+        self.written_input.setPlaceholderText(
+            "Geschrieben, z. B. Mit freundlichen Grüßen – darf mehrzeilig sein"
+        )
+        self.written_input.setTabChangesFocus(True)
+        self.written_input.setFixedHeight(64)
+        self.spoken_input.returnPressed.connect(self._add_replacement)
         add_replacement = QPushButton("Hinzufügen")
         add_replacement.clicked.connect(self._add_replacement)
         replacement_row = QHBoxLayout()
@@ -97,7 +102,8 @@ class DictionaryPage(QWidget):
             card_title("Ersetzungen"),
             muted_label(
                 "Wird nach der Erkennung automatisch ausgetauscht – nur ganze Wörter, "
-                "Groß-/Kleinschreibung egal. Gleiches „Gesagt“ überschreibt den alten Eintrag."
+                "Groß-/Kleinschreibung egal. Gleiches „Gesagt“ überschreibt den alten Eintrag. "
+                "Auch für Textbausteine: z. B. „meine Signatur“ → deine komplette Signatur."
             ),
             replacement_row,
             self.replacement_table,
@@ -136,7 +142,9 @@ class DictionaryPage(QWidget):
         self.replacement_table.setRowCount(len(dictionary.replacements))
         for row, replacement in enumerate(dictionary.replacements):
             self.replacement_table.setItem(row, 0, QTableWidgetItem(replacement.spoken))
-            self.replacement_table.setItem(row, 1, QTableWidgetItem(replacement.written))
+            # Zeilenumbrüche in der Tabelle sichtbar machen, ohne die Zeile aufzublähen
+            shown = replacement.written.replace("\n", " ⏎ ")
+            self.replacement_table.setItem(row, 1, QTableWidgetItem(shown))
         set_hint(self.terms_hint, TOO_MANY_TERMS_HINT if dictionary.hint_too_long() else "")
         self._update_buttons()
 
@@ -160,7 +168,7 @@ class DictionaryPage(QWidget):
         self._apply(dictionary)
 
     def _add_replacement(self) -> None:
-        spoken, written = self.spoken_input.text(), self.written_input.text()
+        spoken, written = self.spoken_input.text(), self.written_input.toPlainText()
         if not spoken.strip() or not written.strip():
             # Enter im ersten Feld: einfach ins zweite springen
             (self.written_input if spoken.strip() else self.spoken_input).setFocus()

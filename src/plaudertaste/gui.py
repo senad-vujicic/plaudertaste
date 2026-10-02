@@ -19,7 +19,7 @@ from pynput import keyboard
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
-from plaudertaste import autostart, paths, theme
+from plaudertaste import GITHUB_REPO, __version__, autostart, paths, theme
 from plaudertaste.app import MIC_UNAVAILABLE, App, Notice, Status
 from plaudertaste.catalog import AUTO, MODELS, language_display
 from plaudertaste.config import Config, ConfigError, load_config, save_config
@@ -28,6 +28,7 @@ from plaudertaste.dictionary import Dictionary, DictionaryError, load_dictionary
 from plaudertaste.dictionary_page import DictionaryPage
 from plaudertaste.history import History
 from plaudertaste.hotkey import (
+    UNDO_KEY,
     HotkeyCapture,
     PushToTalk,
     describe_hotkey,
@@ -43,11 +44,13 @@ from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
 from plaudertaste.stats import Stats
 from plaudertaste.transcriber import Transcriber
+from plaudertaste.updates import Update, check_for_update
 from plaudertaste.tray import Tray, make_app_icon
 
 log = logging.getLogger(__name__)
 
 TITLE = "Plaudertaste"
+HANDS_FREE_LIMIT_MS = 5 * 60 * 1000  # Freihand-Aufnahme endet spätestens nach 5 Minuten
 
 # Dauerhafte Probleme für die Startseite: (Überschrift, Lösungstipp)
 PROBLEM_MIC_UNAVAILABLE = (
@@ -80,6 +83,8 @@ class Controller(QObject):
     notice = Signal(object)  # Notice – aus App-Threads
     model_cancelled = Signal()
     hotkey_captured = Signal(str)  # aus dem Tastatur-Thread
+    hands_free_started = Signal()  # aus dem Tastatur-Thread
+    update_available = Signal(object)  # Update – aus dem Update-Thread
 
     def __init__(self, config: Config, log_file: Path) -> None:
         super().__init__()
@@ -137,6 +142,11 @@ class Controller(QObject):
         self.model_cancelled.connect(self._on_model_cancelled)
         self.window.download_banner.cancel_requested.connect(self.cancel_download)
         self.hotkey_captured.connect(self._on_hotkey_captured)
+        self.hands_free_started.connect(self._on_hands_free_started)
+        self.update_available.connect(self._on_update_available)
+        # Notstopp, falls eine Freihand-Aufnahme vergessen wird
+        self._hands_free_timer = QTimer(self, singleShot=True, interval=HANDS_FREE_LIMIT_MS)
+        self._hands_free_timer.timeout.connect(self._stop_forgotten_hands_free)
 
         self._load_dictionary()
         self._refresh_start_page()
@@ -148,8 +158,27 @@ class Controller(QObject):
         if show_window:
             self.show_window(Page.START)
         self._refresh_autostart_entry()
-        self._listener = start_listener(self._on_key_press, self._on_key_release)
+        self._listener = start_listener(self._on_key_press, self._on_key_release, self._swallow)
         self._load_model_in_background()
+        if self._config.check_updates:
+            threading.Thread(target=self._check_for_update, name="update-check", daemon=True).start()
+
+    # --- Update-Hinweis ---
+
+    def _check_for_update(self) -> None:
+        update = check_for_update(__version__, GITHUB_REPO)
+        if update is not None:
+            self.update_available.emit(update)
+
+    def _on_update_available(self, update: Update) -> None:
+        log.info("Neue Version verfügbar: %s", update.version)
+        self.window.start_page.show_update(update.version, update.url)
+        self.tray.showMessage(
+            TITLE,
+            f"Neue Version {update.version} verfügbar – Details auf der Startseite.",
+            QSystemTrayIcon.MessageIcon.Information,
+            5000,
+        )
 
     def show_window(self, page: Page) -> None:
         if page is Page.SETTINGS and self.window.current_page() is Page.SETTINGS:
@@ -163,11 +192,21 @@ class Controller(QObject):
 
     def _on_key_press(self, key: str) -> None:
         target = self._key_target
-        if target is not None:
-            try:
-                target.press(key)
-            except Exception:
-                log.exception("Fehler bei Tastendruck")
+        if target is None:
+            return
+        try:
+            if isinstance(target, PushToTalk) and self._app is not None:
+                if not target.is_hotkey_key(key) and key != UNDO_KEY:
+                    # Eigenes Tippen: Der Cursor steht evtl. woanders – Rückgängig sperren.
+                    self._app.forget_last_dictation()
+            target.press(key)
+        except Exception:
+            log.exception("Fehler bei Tastendruck")
+
+    def _swallow(self, key: str) -> bool:
+        """Rücktaste beim gehaltenen Hotkey dem Zielprogramm vorenthalten."""
+        target = self._key_target
+        return isinstance(target, PushToTalk) and target.wants_to_swallow(key)
 
     def _on_key_release(self, key: str) -> None:
         target = self._key_target
@@ -306,6 +345,8 @@ class Controller(QObject):
             self._app.on_start,
             self._app.on_stop,
             self._app.on_cancel,
+            on_hands_free=self.hands_free_started.emit,
+            on_undo=self._app.on_undo,
         )
         self._key_target = self._push_to_talk
 
@@ -320,10 +361,23 @@ class Controller(QObject):
             self._set_problem("mic_missing", self._missing_microphone_problem() if missing else None)
         self.tray.set_status(status)  # zuerst Anzeige: play() braucht ~100 ms
         self.window.start_page.set_status(status)
+        if status is not Status.RECORDING:
+            self._hands_free_timer.stop()
+            self._overlay.set_hands_free(False)
         if self._config.overlay:
             self._overlay.set_status(status)
         if tone is not None:
             self._tones.play(tone)
+
+    def _on_hands_free_started(self) -> None:
+        log.info("Freihand-Aufnahme gestartet.")
+        self._overlay.set_hands_free(True)
+        self._hands_free_timer.start()
+
+    def _stop_forgotten_hands_free(self) -> None:
+        if self._push_to_talk is not None and self._push_to_talk.is_hands_free:
+            log.info("Freihand-Aufnahme nach %d min automatisch beendet.", HANDS_FREE_LIMIT_MS // 60000)
+            self._push_to_talk.stop_hands_free()
 
     def _on_notice(self, notice: Notice) -> None:
         """Problem während des Diktierens: rot im Overlay, ernste zusätzlich als Windows-Hinweis.
@@ -385,7 +439,8 @@ class Controller(QObject):
         self.dictionary_page.show_saved()
 
     def _on_dictation_finished(self, text: str, seconds: float) -> None:
-        self._history.add(text, seconds)
+        entry = self._history.add(text, seconds)
+        self.window.start_page.set_last_dictation(entry)
         try:
             self._stats.record(text, seconds)
         except OSError:

@@ -98,3 +98,18 @@ def test_broken_file_raises_clear_error(tmp_path: Path, content: str) -> None:
 
     with pytest.raises(DictionaryError):
         load_dictionary(path)
+
+
+def test_snippet_swallows_whisper_punctuation() -> None:
+    signature = Replacement("meine Signatur", "Viele Grüße\nSenad Vujicic\nKarosseriebau")
+    dictionary = Dictionary(replacements=(signature,))
+
+    assert dictionary.apply("Danke dir. Meine Signatur.") == (
+        "Danke dir. Viele Grüße\nSenad Vujicic\nKarosseriebau"
+    )
+
+
+def test_single_line_replacement_keeps_punctuation() -> None:
+    dictionary = Dictionary(replacements=(MFG,))
+
+    assert dictionary.apply("Danke, mfg.") == "Danke, Mit freundlichen Grüßen."
