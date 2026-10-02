@@ -37,9 +37,10 @@ from plaudertaste.hotkey import (
     start_listener,
 )
 from plaudertaste.main_window import MainWindow, Page
-from plaudertaste.model_download import DownloadCancelled, DownloadFailed, is_model_downloaded
+from plaudertaste.model_download import is_model_downloaded
+from plaudertaste.model_loader import ModelLoader
 from plaudertaste.models import MODELS
-from plaudertaste.network import OfflineError, guard
+from plaudertaste.network import guard
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
 from plaudertaste.settings_page import DEFAULT_MICROPHONE_LABEL, Settings, SettingsPage
@@ -74,12 +75,7 @@ APP_USER_MODEL_ID = "Plaudertaste.Plaudertaste"
 class Controller(QObject):
     status_changed = Signal(object)  # Status – aus App-Threads
     dictation_finished = Signal(str, float)  # Text, Sprechdauer – aus dem Worker-Thread
-    # object statt int: Qt-ints haben 32 Bit, large-v3 hat über 3 Milliarden Bytes.
-    download_progress = Signal(str, object, object)  # Modell, Bytes, Gesamt – Download-Threads
-    model_loaded = Signal(object)  # Transcriber – aus dem Lade-Thread
-    model_failed = Signal(str, str)  # verständliche Meldung, technische Details
     notice = Signal(object)  # Notice – aus App-Threads
-    model_cancelled = Signal()
     hotkey_captured = Signal(str)  # aus dem Tastatur-Thread
     hands_free_started = Signal()  # aus dem Tastatur-Thread
     update_available = Signal(object)  # Update – aus dem Update-Thread
@@ -97,7 +93,7 @@ class Controller(QObject):
         self._status = Status.LOADING
         self._model_text = "wird geladen …"
         self._model_text_before_change = self._model_text
-        self._download_cancel = threading.Event()
+        self._loader = ModelLoader(self)
         self._recorder = Recorder(config.microphone)
         self._tones = TonePlayer(config.sound)
         self._overlay = Overlay(level_source=lambda: self._recorder.level)
@@ -135,10 +131,10 @@ class Controller(QObject):
         self.status_changed.connect(self._on_status)
         self.notice.connect(self._on_notice)
         self.dictation_finished.connect(self._on_dictation_finished)
-        self.download_progress.connect(self._on_download_progress)
-        self.model_loaded.connect(self._on_model_loaded)
-        self.model_failed.connect(self._on_model_failed)
-        self.model_cancelled.connect(self._on_model_cancelled)
+        self._loader.progress.connect(self._on_download_progress)
+        self._loader.loaded.connect(self._on_model_loaded)
+        self._loader.failed.connect(self._on_model_failed)
+        self._loader.cancelled.connect(self._on_model_cancelled)
         self.window.download_banner.cancel_requested.connect(self.cancel_download)
         self.hotkey_captured.connect(self._on_hotkey_captured)
         self.hands_free_started.connect(self._on_hands_free_started)
@@ -237,39 +233,7 @@ class Controller(QObject):
         # Im Hintergrund: Fenster und Icon reagieren sofort, ein altes Modell arbeitet weiter.
         self.tray.set_status(Status.LOADING)
         self.window.start_page.set_status(Status.LOADING)
-        self._download_cancel = threading.Event()  # pro Ladevorgang ein eigenes Signal
-        threading.Thread(
-            target=self._load_model,
-            args=(self._config, self._download_cancel),
-            name="model-loader",
-            daemon=True,
-        ).start()
-
-    def _load_model(self, config: Config, cancel: threading.Event) -> None:
-        try:
-            transcriber = Transcriber(
-                config.model, config.device, config.language, self.download_progress.emit, cancel
-            )
-        except DownloadCancelled:
-            self.model_cancelled.emit()
-            return
-        except OfflineError as exc:
-            log.error("%s", exc)
-            self.model_failed.emit(str(exc), "Offline-Modus aktiv")
-            return
-        except DownloadFailed as exc:
-            log.error("Download fehlgeschlagen: %s", exc)
-            self.model_failed.emit(
-                "Das Sprachmodell konnte nicht heruntergeladen werden. "
-                "Bitte prüfe deine Internetverbindung.",
-                str(exc),
-            )
-            return
-        except Exception as exc:
-            log.exception("Modell konnte nicht geladen werden")
-            self.model_failed.emit("Das Sprachmodell konnte nicht geladen werden.", str(exc))
-            return
-        self.model_loaded.emit(transcriber)
+        self._loader.load(self._config)
 
     def _on_download_progress(self, model: str, done: int, total: int) -> None:
         self.window.download_banner.show_progress(model, done, total)
@@ -335,7 +299,7 @@ class Controller(QObject):
             if answer != QMessageBox.StandardButton.Yes:
                 return
         self.window.download_banner.cancel_button.setEnabled(False)  # kein Doppelklick
-        self._download_cancel.set()
+        self._loader.cancel()
 
     def _on_model_cancelled(self) -> None:
         log.info("Download abgebrochen.")
@@ -588,7 +552,7 @@ class Controller(QObject):
 
     def shutdown(self) -> None:
         log.info("Plaudertaste wird beendet.")
-        self._download_cancel.set()  # ein laufender Download-Prozess wird beendet
+        self._loader.cancel()  # ein laufender Download-Prozess wird beendet
         self._key_target = None
         if self._listener is not None:
             self._listener.stop()

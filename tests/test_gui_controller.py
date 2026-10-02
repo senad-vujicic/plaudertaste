@@ -181,7 +181,7 @@ def test_download_progress_shows_banner_also_for_large_models(
     controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Über 2^31 Bytes: würde mit einem 32-Bit-Qt-int überlaufen.
-    controller.download_progress.emit("large-v3", 1_545_500_000, 3_091_000_000)
+    controller._loader.progress.emit("large-v3", 1_545_500_000, 3_091_000_000)
 
     banner = controller.window.download_banner
     assert not banner.isHidden()
@@ -200,7 +200,7 @@ def test_cancelled_model_change_keeps_old_model_and_display(controller: gui.Cont
     assert controller.window.start_page.model_label.text() == "wird geladen …"
 
     controller.cancel_download()
-    assert controller._download_cancel.is_set()
+    assert controller._loader.cancel_requested
     controller._on_model_cancelled()  # meldet der Lade-Thread, sobald der Prozess beendet ist
 
     assert controller._config.model == "auto"
@@ -231,7 +231,7 @@ def test_cancel_on_first_start_asks_first(
 
     controller.cancel_download()
 
-    assert controller._download_cancel.is_set() is cancelled
+    assert controller._loader.cancel_requested is cancelled
 
 
 def test_serious_notice_goes_to_overlay_tray_and_start_page(
