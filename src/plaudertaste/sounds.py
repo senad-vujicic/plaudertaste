@@ -1,8 +1,13 @@
-"""Kurze Signaltöne bei Start und Ende der Aufnahme – im Code erzeugt, ohne Sounddateien."""
+"""Kurze Signaltöne bei Start und Ende der Aufnahme – im Code erzeugt, ohne Sounddateien.
+
+Abgespielt über einen Roh-Stream (wie bei der Aufnahme, siehe recorder.py) in einem eigenen
+Thread: Das Öffnen des Ausgabegeräts dauert ~100 ms und soll die Oberfläche nicht bremsen.
+"""
 
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 
 import numpy as np
@@ -44,22 +49,27 @@ def tone_for_transition(previous: Status, current: Status) -> np.ndarray | None:
     return None
 
 
-def _play_with_sounddevice(tone: np.ndarray) -> None:
-    sd.play(tone, SAMPLE_RATE)  # kehrt sofort zurück, spielt im Hintergrund
+def play_blocking(tone: np.ndarray) -> None:
+    """Spielt den Ton und kehrt zurück, wenn er zu Ende ist."""
+    try:
+        with sd.RawOutputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32") as stream:
+            stream.write(tone.tobytes())
+    except sd.PortAudioError as exc:
+        # Fehlender Lautsprecher darf das Diktieren nicht verhindern.
+        log.warning("Ton konnte nicht abgespielt werden: %s", exc)
+
+
+def play_in_background(tone: np.ndarray) -> None:
+    threading.Thread(target=play_blocking, args=(tone,), name="tone", daemon=True).start()
 
 
 class TonePlayer:
     def __init__(
-        self, enabled: bool, play: Callable[[np.ndarray], None] = _play_with_sounddevice
+        self, enabled: bool, play: Callable[[np.ndarray], None] = play_in_background
     ) -> None:
         self.enabled = enabled
         self._play = play
 
     def play(self, tone: np.ndarray) -> None:
-        if not self.enabled:
-            return
-        try:
+        if self.enabled:
             self._play(tone)
-        except sd.PortAudioError as exc:
-            # Fehlender Lautsprecher darf das Diktieren nicht verhindern.
-            log.warning("Ton konnte nicht abgespielt werden: %s", exc)

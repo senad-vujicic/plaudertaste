@@ -68,6 +68,7 @@ class Transcriber:
         import ctranslate2  # erst nach register_nvidia_dlls importieren
 
         self.language = None if language == "auto" else language
+        self.gpu_fallback = False  # True: NVIDIA-GPU vorhanden, aber nicht nutzbar -> CPU
         choice = resolve_model(model_setting, device_setting, ctranslate2.get_cuda_device_count())
         # Erst herunterladen, dann laden: Ein Netzwerkfehler darf nicht als
         # "GPU nicht nutzbar" gedeutet werden und den CPU-Rückfall auslösen.
@@ -80,6 +81,7 @@ class Transcriber:
             if choice.device != "cuda":
                 raise
             log.warning("GPU nicht nutzbar (%s) – weiter mit CPU.", exc)
+            self.gpu_fallback = True
             choice = resolve_model(model_setting, "cpu", 0)
             path = ensure_model(choice.name, on_download_progress, cancel_download)
             self._model, self.choice = self._load(choice, path), choice

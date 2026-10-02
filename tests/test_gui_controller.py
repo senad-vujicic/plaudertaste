@@ -10,6 +10,7 @@ from plaudertaste.config import Config, load_config
 from plaudertaste.hotkey import HotkeyCapture
 from plaudertaste.main_window import Page
 from plaudertaste.settings_page import Settings
+from plaudertaste.sounds import TonePlayer
 
 
 class FakeApp:
@@ -38,6 +39,7 @@ def controller(
     monkeypatch.setattr(gui, "is_model_downloaded", lambda name: name == "small")
 
     controller = gui.Controller(Config(), tmp_path / "app.log")
+    controller._tones = TonePlayer(enabled=True, play=lambda tone: None)  # Tests bleiben stumm
     controller.loads: list[Config] = []  # type: ignore[attr-defined]
     monkeypatch.setattr(
         controller, "_load_model_in_background", lambda: controller.loads.append(controller._config)  # type: ignore[attr-defined]
@@ -96,7 +98,7 @@ def test_failed_model_change_restores_previous_model(
     monkeypatch.setattr(gui.QMessageBox, "warning", lambda *args: None)
     controller.apply_settings(Settings(replace(Config(), model="medium"), autostart=False))
 
-    controller._on_model_failed("Download abgebrochen")
+    controller._on_model_failed("Download fehlgeschlagen.", "ConnectError")
 
     assert controller._config.model == "auto"
     assert load_config(paths.config_file()).model == "auto"
@@ -172,7 +174,7 @@ def test_download_progress_shows_banner_also_for_large_models(
     assert "50 %" in controller.tray.toolTip()
 
     monkeypatch.setattr(gui.QMessageBox, "warning", lambda *args: None)
-    controller._on_model_failed("Verbindung abgebrochen")  # Download scheitert
+    controller._on_model_failed("Download fehlgeschlagen.", "ConnectError")  # Download scheitert
     assert banner.isHidden()
 
 
@@ -198,7 +200,7 @@ def test_failed_model_change_restores_model_display(
     controller._model_text = "large-v3-turbo · GPU"
     controller.apply_settings(Settings(replace(Config(), model="medium"), autostart=False))
 
-    controller._on_model_failed("Verbindung abgebrochen")
+    controller._on_model_failed("Download fehlgeschlagen.", "ConnectError")
 
     assert controller.window.start_page.model_label.text() == "large-v3-turbo · GPU"
 
@@ -214,3 +216,74 @@ def test_cancel_on_first_start_asks_first(
     controller.cancel_download()
 
     assert controller._download_cancel.is_set() is cancelled
+
+
+def test_serious_notice_goes_to_overlay_tray_and_start_page(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from plaudertaste.app import MIC_UNAVAILABLE
+
+    tray_messages: list[str] = []
+    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text))
+
+    controller._on_notice(MIC_UNAVAILABLE)
+
+    assert controller._overlay.message == MIC_UNAVAILABLE.text
+    assert tray_messages == [MIC_UNAVAILABLE.text]
+    assert not controller.window.start_page.problems_card.isHidden()
+    assert "Kein Mikrofon" in controller.window.start_page.problems_label.text()
+
+    controller._on_status(gui.Status.RECORDING)  # Mikrofon klappt wieder
+    assert controller.window.start_page.problems_card.isHidden()
+    controller._on_status(gui.Status.READY)
+
+
+def test_minor_notice_only_in_overlay(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from plaudertaste.app import NOTHING_UNDERSTOOD
+
+    tray_messages: list[str] = []
+    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text))
+
+    controller._on_notice(NOTHING_UNDERSTOOD)
+
+    assert controller._overlay.message == NOTHING_UNDERSTOOD.text
+    assert tray_messages == []
+    assert controller.window.start_page.problems_card.isHidden()
+
+
+def test_missing_microphone_shows_problem_once(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tray_messages: list[str] = []
+    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text))
+    controller._config = replace(controller._config, microphone="Headset (USB)")
+    controller._recorder.fell_back_to_default = True
+
+    for _ in range(3):  # drei Aufnahmen hintereinander
+        controller._on_status(gui.Status.RECORDING)
+        controller._on_status(gui.Status.READY)
+
+    assert "Headset (USB)" in controller.window.start_page.problems_label.text()
+    assert len(tray_messages) == 1  # nur beim ersten Mal benachrichtigen
+
+
+def test_gpu_fallback_is_shown_on_start_page(controller: gui.Controller) -> None:
+    controller._set_problem("gpu", gui.PROBLEM_GPU_FALLBACK)
+
+    assert "Grafikkarte" in controller.window.start_page.problems_label.text()
+
+
+def test_key_error_does_not_kill_listener(controller: gui.Controller) -> None:
+    class Broken:
+        def press(self, key: str) -> None:
+            raise RuntimeError("Audio-Treiber weg")
+
+        def release(self, key: str) -> None:
+            raise RuntimeError("Audio-Treiber weg")
+
+    controller._key_target = Broken()  # type: ignore[assignment]
+
+    controller._on_key_press("ctrl_r")  # darf keine Ausnahme nach außen werfen
+    controller._on_key_release("ctrl_r")

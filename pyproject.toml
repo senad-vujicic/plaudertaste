@@ -36,3 +36,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Frühwarnsystem: Veraltetes in unserem Code und Fehler in Audio-/Hintergrund-Callbacks
+# lassen Tests scheitern, statt nur eine leicht übersehene Warnung auszugeben.
+filterwarnings = [
+    "error::DeprecationWarning:plaudertaste",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]

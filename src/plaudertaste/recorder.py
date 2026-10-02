@@ -1,4 +1,9 @@
-"""Mikrofon-Aufnahme im Format, das Whisper erwartet (16 kHz, mono, float32)."""
+"""Mikrofon-Aufnahme im Format, das Whisper erwartet (16 kHz, mono, float32).
+
+Wir nutzen den Roh-Stream von sounddevice und wandeln die Bytes selbst um: Die
+NumPy-Umwandlung von sounddevice 0.5.6 nutzt eine Funktion, die NumPy 2.5 als veraltet
+markiert hat – fällt sie weg, würde die Aufnahme sonst ausfallen.
+"""
 
 from __future__ import annotations
 
@@ -27,8 +32,10 @@ class Recorder:
         self.sample_rate = sample_rate
         self._chunks: list[np.ndarray] = []
         self._lock = threading.Lock()
-        self._stream: sd.InputStream | None = None
+        self._stream: sd.RawInputStream | None = None
         self._level = 0.0
+        # True, wenn das gewählte Mikrofon fehlte und der Windows-Standard genutzt wurde
+        self.fell_back_to_default = False
 
     @property
     def level(self) -> float:
@@ -41,10 +48,11 @@ class Recorder:
         self._chunks = []
         self._level = 0.0
         device = find_microphone(self.microphone)
-        if self.microphone and device is None:
+        self.fell_back_to_default = bool(self.microphone) and device is None
+        if self.fell_back_to_default:
             log.warning("Mikrofon '%s' nicht gefunden – nutze Windows-Standard.", self.microphone)
         try:
-            self._stream = sd.InputStream(
+            self._stream = sd.RawInputStream(
                 device=device,
                 samplerate=self.sample_rate,
                 channels=1,
@@ -73,9 +81,10 @@ class Recorder:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(chunks)
 
-    def _on_audio(self, indata: np.ndarray, frames: int, time: object, status: object) -> None:
+    def _on_audio(self, indata: memoryview, frames: int, time: object, status: object) -> None:
         # Läuft im Audio-Thread: nur kopieren, nichts Langsames tun.
-        samples = indata[:, 0].copy()
+        # indata sind rohe Bytes (mono float32); copy(), weil der Puffer danach wiederverwendet wird.
+        samples = np.frombuffer(indata, dtype=np.float32).copy()
         self._level = float(np.sqrt(np.mean(samples**2))) if samples.size else 0.0
         with self._lock:
             self._chunks.append(samples)

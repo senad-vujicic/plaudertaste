@@ -7,6 +7,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
@@ -18,6 +19,9 @@ from plaudertaste.transcriber import Transcriber
 log = logging.getLogger(__name__)
 
 MIN_DURATION_S = 0.3  # kürzere Aufnahmen gelten als versehentliches Antippen
+# Spitzenpegel darunter = praktisch absolute Stille: Mikrofon vermutlich stummgeschaltet.
+# (Normales Raumrauschen liegt deutlich darüber, gemessen am Volt 2: ~0,009.)
+SILENCE_PEAK = 0.001
 
 
 class Status(Enum):
@@ -27,13 +31,32 @@ class Status(Enum):
     PROCESSING = "Wird verarbeitet …"
 
 
+@dataclass(frozen=True)
+class Notice:
+    """Ein Problem, das dem Nutzer gezeigt werden soll."""
+
+    text: str
+    serious: bool = False  # ernst = zusätzlich als Windows-Benachrichtigung
+
+
+MIC_UNAVAILABLE = Notice(
+    "Kein Mikrofon verfügbar – ist eins angeschlossen und für Apps freigegeben?", serious=True
+)
+SILENT_MICROPHONE = Notice("Kein Ton vom Mikrofon – ist es stummgeschaltet?", serious=True)
+NOTHING_UNDERSTOOD = Notice("Nichts verstanden – bitte etwas länger oder deutlicher sprechen.")
+PASTE_FAILED = Notice(
+    "Text konnte nicht eingefügt werden – er liegt im Verlauf zum Kopieren.", serious=True
+)
+PROCESSING_FAILED = Notice("Fehler bei der Spracherkennung – Details in der Logdatei.", serious=True)
+
+
 class App:
     """Die Hotkey-Callbacks laufen im Tastatur-Thread und müssen sofort zurückkehren.
 
     Die langsame Arbeit (Spracherkennung, Einfügen) erledigt ein eigener Worker-Thread,
-    der Aufnahmen über eine Warteschlange bekommt. Statuswechsel werden über
-    `on_status` gemeldet – aus beliebigen Threads. Fertige Diktate meldet `on_dictation`
-    (Text und Sprechdauer in Sekunden) aus dem Worker-Thread.
+    der Aufnahmen über eine Warteschlange bekommt. Meldungen, aus beliebigen Threads:
+    `on_status` (Statuswechsel), `on_dictation` (Text und Sprechdauer eines Diktats,
+    auch wenn das Einfügen scheiterte) und `on_notice` (Probleme für den Nutzer).
     """
 
     def __init__(
@@ -43,12 +66,14 @@ class App:
         paste: Callable[[str], None] = paste_text,
         on_status: Callable[[Status], None] = lambda status: None,
         on_dictation: Callable[[str, float], None] = lambda text, seconds: None,
+        on_notice: Callable[[Notice], None] = lambda notice: None,
     ) -> None:
         self._transcriber = transcriber
         self._recorder = recorder
         self._paste = paste
         self._on_status = on_status
         self._on_dictation = on_dictation
+        self._on_notice = on_notice
         self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
         # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
@@ -77,6 +102,7 @@ class App:
             self._recorder.start()
         except RecorderError as exc:
             log.error("%s", exc)
+            self._on_notice(MIC_UNAVAILABLE)
             return
         self._update(recording=True)
         log.info("Aufnahme läuft …")
@@ -105,19 +131,29 @@ class App:
             self._update(pending_delta=-1)
 
     def _process(self, audio: np.ndarray) -> None:
+        started = time.perf_counter()
         try:
-            started = time.perf_counter()
             text = self._transcriber.transcribe(audio)
-            if not text:
-                log.info("Kein Text erkannt.")
-                return
-            self._paste(text + " ")  # trennt aufeinanderfolgende Diktate
-            # Datenschutz: nur die Länge loggen, nie den diktierten Text.
-            log.info("Eingefügt: %d Zeichen in %.2f s", len(text), time.perf_counter() - started)
-            self._on_dictation(text, audio.size / self._recorder.sample_rate)
         except Exception:
             # Ein Fehler bei einer Aufnahme darf das Tool nicht beenden.
-            log.exception("Fehler bei der Verarbeitung")
+            log.exception("Fehler bei der Spracherkennung")
+            self._on_notice(PROCESSING_FAILED)
+            return
+        if not text:
+            silent = float(np.abs(audio).max()) < SILENCE_PEAK
+            log.info("Kein Text erkannt (%s).", "Stille" if silent else "unverständlich")
+            self._on_notice(SILENT_MICROPHONE if silent else NOTHING_UNDERSTOOD)
+            return
+        try:
+            self._paste(text + " ")  # trennt aufeinanderfolgende Diktate
+        except Exception:
+            log.exception("Einfügen fehlgeschlagen")
+            self._on_notice(PASTE_FAILED)
+        else:
+            # Datenschutz: nur die Länge loggen, nie den diktierten Text.
+            log.info("Eingefügt: %d Zeichen in %.2f s", len(text), time.perf_counter() - started)
+        # Auch bei gescheitertem Einfügen: Der Text soll im Verlauf zu finden sein.
+        self._on_dictation(text, audio.size / self._recorder.sample_rate)
 
     # --- Status ---
 

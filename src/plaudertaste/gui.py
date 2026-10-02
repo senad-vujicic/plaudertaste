@@ -20,7 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from plaudertaste import autostart, paths, theme
-from plaudertaste.app import App, Status
+from plaudertaste.app import MIC_UNAVAILABLE, App, Notice, Status
 from plaudertaste.catalog import AUTO, MODELS, language_display
 from plaudertaste.config import Config, ConfigError, load_config, save_config
 from plaudertaste.devices import list_microphones
@@ -33,7 +33,7 @@ from plaudertaste.hotkey import (
     start_listener,
 )
 from plaudertaste.main_window import MainWindow, Page
-from plaudertaste.model_download import DownloadCancelled, is_model_downloaded
+from plaudertaste.model_download import DownloadCancelled, DownloadFailed, is_model_downloaded
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
 from plaudertaste.settings_page import DEFAULT_MICROPHONE_LABEL, Settings, SettingsPage
@@ -46,6 +46,18 @@ from plaudertaste.tray import Tray, make_app_icon
 log = logging.getLogger(__name__)
 
 TITLE = "Plaudertaste"
+
+# Dauerhafte Probleme für die Startseite: (Überschrift, Lösungstipp)
+PROBLEM_MIC_UNAVAILABLE = (
+    "Kein Mikrofon verfügbar",
+    "Prüfe, ob ein Mikrofon angeschlossen ist. Unter Windows-Einstellungen → Datenschutz und "
+    "Sicherheit → Mikrofon muss „Desktop-Apps Zugriff auf Ihr Mikrofon erlauben“ an sein.",
+)
+PROBLEM_GPU_FALLBACK = (
+    "NVIDIA-Grafikkarte nicht nutzbar",
+    "Plaudertaste läuft auf dem Prozessor – das funktioniert, ist aber langsamer. "
+    "Details stehen in der Logdatei.",
+)
 # Eigene Kennung für Windows: Ohne sie ordnet die Taskleiste das Fenster python.exe zu
 # und zeigt dessen Icon.
 APP_USER_MODEL_ID = "Plaudertaste.Plaudertaste"
@@ -62,7 +74,8 @@ class Controller(QObject):
     # object statt int: Qt-ints haben 32 Bit, large-v3 hat über 3 Milliarden Bytes.
     download_progress = Signal(str, object, object)  # Modell, Bytes, Gesamt – Download-Threads
     model_loaded = Signal(object)  # Transcriber – aus dem Lade-Thread
-    model_failed = Signal(str)
+    model_failed = Signal(str, str)  # verständliche Meldung, technische Details
+    notice = Signal(object)  # Notice – aus App-Threads
     model_cancelled = Signal()
     hotkey_captured = Signal(str)  # aus dem Tastatur-Thread
 
@@ -86,6 +99,7 @@ class Controller(QObject):
         self._stats = Stats(paths.stats_file())
         self._config_before_model_change: Config | None = None  # für Rückfall bei Ladefehler
         self._tray_hint_shown = False
+        self._problems: dict[str, tuple[str, str]] = {}  # bestehende Probleme für die Startseite
 
         self.tray = Tray(
             describe_hotkey(config.hotkey),
@@ -108,6 +122,7 @@ class Controller(QObject):
         self.settings_page.capture_requested.connect(self._start_hotkey_capture)
         self.settings_page.capture_cancelled.connect(self._stop_hotkey_capture)
         self.status_changed.connect(self._on_status)
+        self.notice.connect(self._on_notice)
         self.dictation_finished.connect(self._on_dictation_finished)
         self.download_progress.connect(self._on_download_progress)
         self.model_loaded.connect(self._on_model_loaded)
@@ -135,15 +150,24 @@ class Controller(QObject):
 
     # --- Tastatur (Listener-Thread) ---
 
+    # Ein Fehler hier würde den Tastatur-Listener still beenden – und der Hotkey wäre
+    # bis zum Neustart tot. Deshalb abfangen und protokollieren.
+
     def _on_key_press(self, key: str) -> None:
         target = self._key_target
         if target is not None:
-            target.press(key)
+            try:
+                target.press(key)
+            except Exception:
+                log.exception("Fehler bei Tastendruck")
 
     def _on_key_release(self, key: str) -> None:
         target = self._key_target
         if target is not None:
-            target.release(key)
+            try:
+                target.release(key)
+            except Exception:
+                log.exception("Fehler beim Loslassen einer Taste")
 
     # --- Modell ---
 
@@ -167,9 +191,17 @@ class Controller(QObject):
         except DownloadCancelled:
             self.model_cancelled.emit()
             return
+        except DownloadFailed as exc:
+            log.error("Download fehlgeschlagen: %s", exc)
+            self.model_failed.emit(
+                "Das Sprachmodell konnte nicht heruntergeladen werden. "
+                "Bitte prüfe deine Internetverbindung.",
+                str(exc),
+            )
+            return
         except Exception as exc:
             log.exception("Modell konnte nicht geladen werden")
-            self.model_failed.emit(str(exc))
+            self.model_failed.emit("Das Sprachmodell konnte nicht geladen werden.", str(exc))
             return
         self.model_loaded.emit(transcriber)
 
@@ -191,37 +223,36 @@ class Controller(QObject):
         transcriber.language = whisper_language(self._config.language)
         self._config_before_model_change = None
         self._model_text = f"{choice.name} · {'GPU' if choice.device == 'cuda' else 'CPU'}"
+        self._set_problem("gpu", PROBLEM_GPU_FALLBACK if transcriber.gpu_fallback else None)
         self._refresh_start_page()
         self._app = App(
             transcriber,
             self._recorder,
             on_status=self.status_changed.emit,
             on_dictation=self.dictation_finished.emit,
+            on_notice=self.notice.emit,
         )
         self._app.start()
         self._activate_push_to_talk()
         log.info("Bereit! Halte [%s] gedrückt und sprich.", describe_hotkey(self._config.hotkey))
 
-    def _on_model_failed(self, message: str) -> None:
+    def _on_model_failed(self, message: str, details: str) -> None:
         self.window.download_banner.hide()
         if self._app is None:  # beim Start: ohne Modell geht nichts
             QMessageBox.critical(
-                None,
+                self.window,
                 TITLE,
-                "Das Sprachmodell konnte nicht geladen werden:\n\n"
-                f"{message}\n\n"
-                "Beim ersten Start wird eine Internetverbindung für den Download benötigt.\n"
-                f"Details in der Logdatei:\n{self._log_file}",
+                f"{message}\n\nOhne Sprachmodell kann Plaudertaste nicht diktieren und wird "
+                "beendet. Starte es danach einfach neu.\n\n"
+                f"Technische Details: {details}\nLogdatei: {self._log_file}",
             )
             self.shutdown()
             return
-        failed = self._config.model
         self._restore_previous_model()
         QMessageBox.warning(
             self.window,
             TITLE,
-            f"Das Modell '{failed}' konnte nicht geladen werden:\n\n{message}\n\n"
-            "Das bisherige Modell bleibt aktiv.",
+            f"{message}\n\nDas bisherige Modell bleibt aktiv.\n\nTechnische Details: {details}",
         )
 
     def cancel_download(self) -> None:
@@ -272,12 +303,45 @@ class Controller(QObject):
     def _on_status(self, status: Status) -> None:
         tone = tone_for_transition(self._status, status)
         self._status = status
+        if status is Status.RECORDING:  # Aufnahme klappt -> Mikrofon-Probleme neu bewerten
+            self._set_problem("mic", None)
+            missing = self._recorder.fell_back_to_default
+            self._set_problem("mic_missing", self._missing_microphone_problem() if missing else None)
         self.tray.set_status(status)  # zuerst Anzeige: play() braucht ~100 ms
         self.window.start_page.set_status(status)
         if self._config.overlay:
             self._overlay.set_status(status)
         if tone is not None:
             self._tones.play(tone)
+
+    def _on_notice(self, notice: Notice) -> None:
+        """Problem während des Diktierens: rot im Overlay, ernste zusätzlich als Windows-Hinweis.
+        Ein Fehlerfenster wäre hier falsch – es nähme den Fokus, das nächste Diktat landete darin."""
+        log.info("Hinweis an Nutzer: %s", notice.text)
+        if self._config.overlay:
+            self._overlay.show_message(notice.text)
+        if notice.serious:
+            self.tray.showMessage(TITLE, notice.text, QSystemTrayIcon.MessageIcon.Warning, 5000)
+        if notice is MIC_UNAVAILABLE:
+            self._set_problem("mic", PROBLEM_MIC_UNAVAILABLE)
+
+    def _missing_microphone_problem(self) -> tuple[str, str]:
+        return (
+            f"Gewähltes Mikrofon „{self._config.microphone}“ nicht gefunden",
+            "Plaudertaste nutzt solange den Windows-Standard. Stecke das Mikrofon ein oder "
+            "wähle in den Einstellungen ein anderes.",
+        )
+
+    def _set_problem(self, key: str, problem: tuple[str, str] | None) -> None:
+        """Dauerhaftes Problem auf der Startseite setzen (None = behoben)."""
+        is_new = problem is not None and key not in self._problems
+        if problem is None:
+            self._problems.pop(key, None)
+        else:
+            self._problems[key] = problem
+        self.window.start_page.set_problems(list(self._problems.values()))
+        if is_new and key != "mic":  # "mic" meldet bereits _on_notice
+            self.tray.showMessage(TITLE, problem[0], QSystemTrayIcon.MessageIcon.Warning, 5000)
 
     def _on_dictation_finished(self, text: str, seconds: float) -> None:
         self._history.add(text, seconds)
@@ -370,6 +434,8 @@ class Controller(QObject):
             self._overlay.set_status(Status.READY)  # ausblenden
         self.tray.set_toggles(new.sound, new.overlay)
         self._recorder.microphone = new.microphone
+        if new.microphone != old.microphone:
+            self._set_problem("mic_missing", None)  # wird bei der nächsten Aufnahme neu geprüft
 
         if new.hotkey != old.hotkey:
             self.tray.set_hotkey_label(describe_hotkey(new.hotkey))

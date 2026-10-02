@@ -4,7 +4,16 @@ import threading
 import numpy as np
 import pytest
 
-from plaudertaste.app import App, Status
+from plaudertaste.app import (
+    MIC_UNAVAILABLE,
+    NOTHING_UNDERSTOOD,
+    PASTE_FAILED,
+    PROCESSING_FAILED,
+    SILENT_MICROPHONE,
+    App,
+    Notice,
+    Status,
+)
 from plaudertaste.recorder import RecorderError
 
 RATE = 16_000
@@ -180,3 +189,75 @@ def test_finished_dictation_is_reported_with_duration() -> None:
     run_dictations(app, 2)  # zweites Diktat ohne Text wird nicht gemeldet
 
     assert reported == [("Hallo", 2.0)]
+
+
+class LoudRecorder(FakeRecorder):
+    """Liefert hörbares Rauschen statt absoluter Stille."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.audio = np.full(RATE, 0.05, dtype=np.float32)
+
+
+def run_with_notices(app_kwargs: dict, count: int = 1) -> list[Notice]:
+    notices: list[Notice] = []
+    app = App(on_notice=notices.append, **app_kwargs)
+    run_dictations(app, count)
+    return notices
+
+
+def test_missing_microphone_is_reported() -> None:
+    notices: list[Notice] = []
+    app = App(FakeTranscriber([]), FakeRecorder(fail_on_start=True), on_notice=notices.append)  # type: ignore[arg-type]
+
+    app.on_start()
+
+    assert notices == [MIC_UNAVAILABLE]
+
+
+def test_silence_points_to_muted_microphone() -> None:
+    notices = run_with_notices(
+        {"transcriber": FakeTranscriber([""]), "recorder": FakeRecorder(), "paste": lambda t: None}
+    )
+
+    assert notices == [SILENT_MICROPHONE]
+
+
+def test_unclear_speech_is_reported_differently() -> None:
+    notices = run_with_notices(
+        {"transcriber": FakeTranscriber([""]), "recorder": LoudRecorder(), "paste": lambda t: None}
+    )
+
+    assert notices == [NOTHING_UNDERSTOOD]
+
+
+def test_recognition_error_is_reported() -> None:
+    notices = run_with_notices(
+        {
+            "transcriber": FakeTranscriber([RuntimeError("kaputt")]),
+            "recorder": FakeRecorder(),
+            "paste": lambda t: None,
+        }
+    )
+
+    assert notices == [PROCESSING_FAILED]
+
+
+def test_failed_paste_keeps_text_for_history() -> None:
+    def broken_paste(text: str) -> None:
+        raise RuntimeError("Zwischenablage blockiert")
+
+    reported: list[tuple[str, float]] = []
+    notices: list[Notice] = []
+    app = App(
+        FakeTranscriber(["Wichtiger Satz"]),
+        FakeRecorder(),
+        paste=broken_paste,
+        on_dictation=lambda text, seconds: reported.append((text, seconds)),
+        on_notice=notices.append,
+    )  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert notices == [PASTE_FAILED]
+    assert reported == [("Wichtiger Satz", 1.0)]  # Text nicht verloren

@@ -1,4 +1,5 @@
-"""Overlay unten am Bildschirm: Pegel und Zeit während der Aufnahme, Punkte beim Verarbeiten.
+"""Overlay unten am Bildschirm: Pegel und Zeit während der Aufnahme, Punkte beim Verarbeiten,
+rote Kurzmeldung bei Problemen.
 
 Wichtig: Das Fenster darf nie den Fokus bekommen – sonst landete der eingefügte Text
 im Overlay statt im eigentlichen Programm. Mausklicks gehen durch es hindurch.
@@ -21,6 +22,8 @@ WIDTH, HEIGHT = 230, 44
 BOTTOM_MARGIN = 24
 BAR_COUNT = 16
 FRAME_MS = 33  # ~30 Bilder pro Sekunde
+MESSAGE_MS = 4000  # so lange bleibt eine Meldung stehen
+MAX_MESSAGE_WIDTH = 640
 
 BACKGROUND = QColor(28, 28, 30, 235)
 BORDER = QColor(255, 255, 255, 40)
@@ -67,31 +70,64 @@ class Overlay(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(FRAME_MS)
         self._timer.timeout.connect(self._tick)
+        self._message: str | None = None
+        self._message_timer = QTimer(self, singleShot=True, interval=MESSAGE_MS)
+        self._message_timer.timeout.connect(self._hide_message)
 
     @property
     def status(self) -> Status | None:
         return self._status
+
+    @property
+    def message(self) -> str | None:
+        return self._message
 
     def set_status(self, status: Status) -> None:
         if status is Status.RECORDING:
             if self._status is not Status.RECORDING:
                 self._levels.extend([0.0] * BAR_COUNT)
                 self._started = time.monotonic()
+                self._end_message()
                 self._move_to_current_screen()
         elif status is not Status.PROCESSING:
             self._status = None
             self._timer.stop()
-            self.hide()
+            if self._message is None:  # eine gerade gezeigte Meldung bleibt stehen
+                self.hide()
             return
+        self._end_message()
         self._status = status
         self.show()
         self._timer.start()
+
+    def show_message(self, text: str) -> None:
+        """Rote Kurzmeldung, verschwindet nach ein paar Sekunden von selbst."""
+        self._status = None
+        self._timer.stop()
+        self._message = text
+        width = self.fontMetrics().horizontalAdvance(text) + 76
+        self.setFixedSize(max(WIDTH, min(width, MAX_MESSAGE_WIDTH)), HEIGHT)
+        self._move_to_current_screen()
+        self.show()
+        self.update()
+        self._message_timer.start()
+
+    def _end_message(self) -> None:
+        if self._message is not None:
+            self._message = None
+            self._message_timer.stop()
+            self.setFixedSize(WIDTH, HEIGHT)
+
+    def _hide_message(self) -> None:
+        self._end_message()
+        if self._status is None:
+            self.hide()
 
     def _move_to_current_screen(self) -> None:
         """Unten mittig auf dem Bildschirm, auf dem gerade der Mauszeiger ist."""
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         area = screen.availableGeometry()  # ohne Taskleiste
-        self.move(area.center().x() - WIDTH // 2, area.bottom() - HEIGHT - BOTTOM_MARGIN)
+        self.move(area.center().x() - self.width() // 2, area.bottom() - HEIGHT - BOTTOM_MARGIN)
 
     def _tick(self) -> None:
         if self._status is Status.RECORDING:
@@ -106,11 +142,29 @@ class Overlay(QWidget):
         painter.setBrush(BACKGROUND)
         painter.drawRoundedRect(pill, HEIGHT / 2, HEIGHT / 2)
 
-        if self._status is Status.RECORDING:
+        if self._message is not None:
+            self._paint_message(painter, self._message)
+        elif self._status is Status.RECORDING:
             self._paint_recording(painter)
         elif self._status is Status.PROCESSING:
             self._paint_processing(painter)
         painter.end()
+
+    def _paint_message(self, painter: QPainter, text: str) -> None:
+        middle = HEIGHT / 2
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(RED)
+        painter.drawEllipse(QRectF(14, middle - 9, 18, 18))
+        painter.setPen(QColor("white"))
+        bold = QFont("Segoe UI", 10)
+        bold.setBold(True)
+        painter.setFont(bold)
+        painter.drawText(QRectF(14, middle - 9, 18, 18), Qt.AlignmentFlag.AlignCenter, "!")
+        painter.setPen(TEXT)
+        painter.setFont(QFont("Segoe UI", 10))
+        text_area = QRectF(42, 0, self.width() - 58, HEIGHT)
+        elided = self.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(text_area.width()))
+        painter.drawText(text_area, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
 
     def _paint_recording(self, painter: QPainter) -> None:
         middle = HEIGHT / 2

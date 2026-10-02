@@ -42,6 +42,11 @@ QFrame#card {{
     border: 1px solid {BORDER};
     border-radius: 12px;
 }}
+QFrame#problemCard {{
+    background: #2a2216;
+    border: 1px solid #6b4e1f;
+    border-radius: 12px;
+}}
 QWidget#sidebar {{ background: {SIDEBAR}; border-right: 1px solid {BORDER}; }}
 
 QListWidget#nav {{ background: transparent; border: none; outline: 0; }}

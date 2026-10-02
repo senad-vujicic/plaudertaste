@@ -96,9 +96,17 @@ class StartPage(QWidget):
             details.addWidget(value, row, 1)
         details.setColumnStretch(1, 1)
 
+        self.problems_label = QLabel()
+        self.problems_label.setWordWrap(True)
+        self.problems_label.setTextFormat(Qt.TextFormat.RichText)
+        self.problems_card = card(self.problems_label)
+        self.problems_card.setObjectName("problemCard")
+        self.problems_card.setVisible(False)
+
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.addWidget(card(status_row, self.instructions))
+        layout.addWidget(self.problems_card)
         layout.addLayout(tiles)
         layout.addWidget(card(card_title("Aktuelle Einstellungen"), details))
         layout.addStretch()
@@ -118,6 +126,13 @@ class StartPage(QWidget):
         self.model_label.setText(model)
         self.language_label.setText(language)
         self.microphone_label.setText(microphone)
+
+    def set_problems(self, problems: list[tuple[str, str]]) -> None:
+        """Bestehende Probleme als (Überschrift, Lösungstipp) – leer = Karte ausblenden."""
+        self.problems_label.setText(
+            "<br><br>".join(f"<b>⚠ {title}</b><br>{tip}" for title, tip in problems)
+        )
+        self.problems_card.setVisible(bool(problems))
 
     def set_today(self, totals: Totals) -> None:
         self.words_value.setText(format_number(totals.words))
