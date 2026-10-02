@@ -326,3 +326,58 @@ def test_other_shortcut_does_not_undo(log: Recorder) -> None:
     ptt.release("ctrl_r")
 
     assert log.events == ["start", "cancel"]
+
+
+# --- Hängende Tasten ---
+
+
+def test_stale_key_does_not_block_hotkey(log: Recorder) -> None:
+    really_down: set[str] = set()
+    ptt = PushToTalk(
+        parse_hotkey("ctrl_r"),
+        on_start=lambda: log.events.append("start"),
+        on_stop=lambda: log.events.append("stop"),
+        on_cancel=lambda: log.events.append("cancel"),
+        clock=log.clock,
+        is_key_down=lambda key: key in really_down,
+    )
+    ptt.press("cmd_l")  # Win+L: das Loslassen von Win geht verloren
+    # (kein release("cmd_l") – Windows hat es dem Hook nie gemeldet)
+
+    really_down.add("ctrl_r")
+    ptt.press("ctrl_r")
+
+    assert log.events == ["start"]  # trotz "hängender" Win-Taste
+
+
+def test_really_held_key_still_counts_as_shortcut(log: Recorder) -> None:
+    really_down = {"shift_l", "ctrl_r"}
+    ptt = PushToTalk(
+        parse_hotkey("ctrl_r"),
+        on_start=lambda: log.events.append("start"),
+        on_stop=lambda: log.events.append("stop"),
+        on_cancel=lambda: log.events.append("cancel"),
+        clock=log.clock,
+        is_key_down=lambda key: key in really_down,
+    )
+    ptt.press("shift_l")
+    ptt.press("ctrl_r")  # Umschalt wirklich gehalten -> Tastenkürzel, kein Diktat
+
+    assert log.events == []
+
+
+@pytest.mark.parametrize(
+    ("name", "vk"),
+    [("ctrl_r", 0xA3), ("backspace", 0x08), ("a", 0x41), ("7", 0x37), ("vk173", 173)],
+)
+def test_virtual_key_codes(name: str, vk: int) -> None:
+    from plaudertaste.hotkey import _virtual_key
+
+    assert _virtual_key(name) == vk
+
+
+def test_key_is_down_asks_windows_without_crashing() -> None:
+    from plaudertaste.hotkey import key_is_down
+
+    assert isinstance(key_is_down("f24"), bool)  # F24 hat kaum jemand – aber kein Absturz
+    assert key_is_down("unbekannt") is True  # im Zweifel nichts vergessen

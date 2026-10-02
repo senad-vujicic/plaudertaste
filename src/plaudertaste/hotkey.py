@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
 import string
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -137,6 +139,7 @@ class PushToTalk:
         on_hands_free: Callable[[], None] = lambda: None,
         on_undo: Callable[[], None] = lambda: None,
         clock: Callable[[], float] = time.monotonic,
+        is_key_down: Callable[[str], bool] | None = None,
     ) -> None:
         self._combo = combo
         self._on_start = on_start
@@ -145,6 +148,8 @@ class PushToTalk:
         self._on_hands_free = on_hands_free
         self._on_undo = on_undo
         self._clock = clock
+        # Fragt das Betriebssystem, ob eine Taste wirklich gedrückt ist (siehe press()).
+        self._is_key_down = is_key_down
         self._lock = threading.RLock()
         self._pressed: set[str] = set()
         self._state = _State.IDLE
@@ -171,6 +176,7 @@ class PushToTalk:
         with self._lock:
             if key in self._pressed:  # Tastenwiederholung beim Gedrückthalten
                 return
+            self._forget_stale_keys(key)
             self._pressed.add(key)
 
             if self._state is _State.IDLE and self._combo_held_exactly():
@@ -222,6 +228,15 @@ class PushToTalk:
                 self._state = _State.IDLE
                 self._on_stop()
 
+    def _forget_stale_keys(self, pressed_now: str) -> None:
+        """Bei Win+L, Sperrbildschirm oder Admin-Dialogen geht das Loslassen mancher Tasten
+        verloren. Sie gälten sonst ewig als gedrückt – und der Hotkey wirkte wie ein fremdes
+        Tastenkürzel. Deshalb vor jeder Entscheidung beim Betriebssystem nachfragen."""
+        if self._is_key_down is None or self._state is not _State.IDLE:
+            return
+        stale = {k for k in self._pressed if k != pressed_now and not self._is_key_down(k)}
+        self._pressed -= stale
+
     def _is_combo_key(self, key: str) -> bool:
         return any(key in _GENERIC_KEYS.get(part, {part}) for part in self._combo)
 
@@ -256,6 +271,25 @@ _LLKHF_INJECTED = 0x10 | 0x02  # INJECTED | LOWER_IL_INJECTED
 _SPECIAL_KEYS_BY_VK = {
     key.value.vk: key.name for key in keyboard.Key if getattr(key.value, "vk", None)
 }
+
+
+def _virtual_key(name: str) -> int | None:
+    """Windows-Tastencode zu unserem Tastennamen ("ctrl_r", "a", "vk173" …)."""
+    if name in keyboard.Key.__members__:
+        return getattr(keyboard.Key[name].value, "vk", None)
+    if len(name) == 1 and name.isalnum():
+        return ord(name.upper())
+    if name.startswith("vk") and name[2:].isdigit():
+        return int(name[2:])
+    return None
+
+
+def key_is_down(name: str) -> bool:
+    """Ist die Taste laut Windows gerade wirklich gedrückt? Unbekanntes gilt als gedrückt."""
+    vk = _virtual_key(name)
+    if vk is None or sys.platform != "win32":
+        return True  # im Zweifel nichts vergessen
+    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
 
 
 def start_listener(

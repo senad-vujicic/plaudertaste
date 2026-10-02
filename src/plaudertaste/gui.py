@@ -32,6 +32,7 @@ from plaudertaste.hotkey import (
     HotkeyCapture,
     PushToTalk,
     describe_hotkey,
+    key_is_down,
     parse_hotkey,
     start_listener,
 )
@@ -365,6 +366,7 @@ class Controller(QObject):
             self._app.on_cancel,
             on_hands_free=self.hands_free_started.emit,
             on_undo=self._app.on_undo,
+            is_key_down=key_is_down,
         )
         # Läuft gerade eine Hotkey-Aufnahme in den Einstellungen, nicht dazwischenfunken –
         # nach ihrem Ende übernimmt _stop_hotkey_capture das neue Push-to-Talk.
