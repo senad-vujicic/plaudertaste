@@ -12,6 +12,7 @@ Betriebssystem jederzeit zuverlässig beenden.
 from __future__ import annotations
 
 import multiprocessing
+import os
 import queue
 import threading
 from collections.abc import Callable
@@ -111,8 +112,25 @@ class _QueueSink:
         self._messages.put(("bytes", n))
 
 
+def exit_with_parent() -> None:
+    """Im Download-Prozess: endet Plaudertaste hart (Absturz, Task-Manager), sofort mit enden.
+
+    Sonst liefe der Download verwaist weiter, bis er fertig ist.
+    """
+    parent = multiprocessing.parent_process()
+    if parent is None:  # nicht als Kindprozess gestartet
+        return
+
+    def watch() -> None:
+        parent.join()  # wartet, bis der Hauptprozess weg ist
+        os._exit(1)
+
+    threading.Thread(target=watch, name="exit-with-parent", daemon=True).start()
+
+
 def download_in_child(repo_id: str, messages: Any) -> None:
     """Läuft im eigenen Prozess: lädt herunter und meldet alles über die Warteschlange."""
+    exit_with_parent()
     try:
         path = snapshot_download(
             repo_id, allow_patterns=ALLOW_PATTERNS, tqdm_class=counting_tqdm(_QueueSink(messages))

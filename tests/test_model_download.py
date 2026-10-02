@@ -1,6 +1,9 @@
 import os
+import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -170,3 +173,48 @@ def test_download_is_recorded_in_network_protocol(monkeypatch: pytest.MonkeyPatc
     assert [(c.host, c.purpose) for c in fresh.connections] == [
         ("huggingface.co", "Modell-Download")
     ]
+
+
+ORPHAN_HELPER = """
+import multiprocessing, sys, time
+from plaudertaste.model_download import exit_with_parent
+
+def child(pid_file):
+    exit_with_parent()
+    with open(pid_file, "w") as f:
+        f.write(str(multiprocessing.current_process().pid))
+    time.sleep(60)  # wie ein langer Download
+
+if __name__ == "__main__":
+    multiprocessing.get_context("spawn").Process(target=child, args=(sys.argv[1],)).start()
+    time.sleep(60)
+"""
+
+
+def test_download_process_ends_when_app_is_killed(tmp_path: Path) -> None:
+    helper = tmp_path / "orphan_helper.py"
+    helper.write_text(ORPHAN_HELPER, encoding="utf-8")
+    pid_file = tmp_path / "child.pid"
+    app = subprocess.Popen([sys.executable, str(helper), str(pid_file)])
+    try:
+        deadline = time.monotonic() + 20
+        while not (pid_file.exists() and pid_file.read_text()):
+            assert time.monotonic() < deadline, "Kindprozess ist nicht gestartet"
+            time.sleep(0.1)
+        child_pid = int(pid_file.read_text())
+
+        app.kill()  # wie Absturz oder Task-Manager
+
+        deadline = time.monotonic() + 10
+        while _process_exists(child_pid):
+            assert time.monotonic() < deadline, "Download-Prozess läuft verwaist weiter"
+            time.sleep(0.1)
+    finally:
+        app.kill()
+        app.wait()
+
+
+def _process_exists(pid: int) -> bool:
+    # Bytes statt Text: tasklist antwortet in der Konsolen-Codepage ("Es sind keine …")
+    output = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True)
+    return str(pid).encode() in output.stdout
