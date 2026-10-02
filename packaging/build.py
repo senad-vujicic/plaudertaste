@@ -1,4 +1,5 @@
-"""Baut die Windows-Version nach dist/Plaudertaste/.
+"""Baut die Windows-Version: erst den Programmordner dist/Plaudertaste/, dann daraus den
+Installer release/Plaudertaste-Setup.exe.
 
 Aufruf (im venv, mit `pip install -e .[gpu,build]`):
     python packaging/build.py

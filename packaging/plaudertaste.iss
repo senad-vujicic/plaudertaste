@@ -19,8 +19,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=..\build\plaudertaste.ico
 UninstallDisplayIcon={app}\Plaudertaste.exe
-OutputDir=..\dist
-OutputBaseFilename=Plaudertaste-Setup-{#AppVersion}
+; Eigener Ordner mit genau der einen Datei, die auf GitHub hochgeladen wird. Der Name bleibt
+; immer gleich, damit der Download-Link im README stets die neueste Version liefert.
+OutputDir=..\release
+OutputBaseFilename=Plaudertaste-Setup
 Compression=lzma2/max
 SolidCompression=yes
 LZMANumBlockThreads=4
