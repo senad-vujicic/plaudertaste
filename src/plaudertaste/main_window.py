@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -255,6 +256,39 @@ class StatsPage(QWidget):
             self.refresh()
 
 
+class DownloadBanner(QWidget):
+    """Schmaler Hinweis über allen Seiten, solange ein Sprachmodell heruntergeladen wird."""
+
+    cancel_requested = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.text = QLabel()
+        self.text.setWordWrap(True)
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 100)
+        self.cancel_button = QPushButton("Abbrechen")
+        self.cancel_button.clicked.connect(self.cancel_requested)
+        header = QHBoxLayout()
+        header.addWidget(self.text, 1)
+        header.addWidget(self.cancel_button)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(37, 20, 37, 0)  # bündig mit den Karten der Seiten
+        layout.addWidget(card(header, self.bar, spacing=8))
+        self.setVisible(False)
+
+    def show_progress(self, model: str, done: int, total: int) -> None:
+        percent = done * 100 // total if total else 0
+        self.text.setText(
+            f"Sprachmodell „{model}“ wird heruntergeladen … <b>{percent} %</b> "
+            f"({format_number(done // 1_000_000)} von {format_number(total // 1_000_000)} MB). "
+            "Das passiert nur einmal."
+        )
+        self.bar.setValue(percent)
+        self.cancel_button.setEnabled(True)
+        self.setVisible(True)
+
+
 class MainWindow(QMainWindow):
     hidden_to_tray = Signal()
 
@@ -271,6 +305,7 @@ class MainWindow(QMainWindow):
         self.history_page = HistoryPage(history, QGuiApplication.clipboard().setText)
         self.stats_page = StatsPage(stats)
         self.settings_page = settings_page
+        self.download_banner = DownloadBanner()
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("nav")
@@ -290,7 +325,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._build_sidebar(icon))
-        layout.addWidget(self.pages, 1)
+        content = QVBoxLayout()
+        content.setSpacing(0)
+        content.addWidget(self.download_banner)
+        content.addWidget(self.pages, 1)
+        layout.addLayout(content, 1)
         self.setCentralWidget(central)
         self.sidebar.setCurrentRow(Page.START)
 

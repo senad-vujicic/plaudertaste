@@ -136,6 +136,11 @@ class Tray(QSystemTrayIcon):
             self.sound_action.setChecked(sound)
             self.overlay_action.setChecked(overlay)
 
+    def set_download_progress(self, model: str, percent: int) -> None:
+        text = f"Lade Sprachmodell „{model}“: {percent} %"
+        self._status_action.setText(text)
+        self.setToolTip(f"Plaudertaste – {text}")
+
     def set_status(self, status: Status) -> None:
         self._status = status
         self.setIcon(self._icons[status])

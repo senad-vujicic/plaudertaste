@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+from plaudertaste.model_download import ProgressCallback, ensure_model
 
 log = logging.getLogger(__name__)
 
@@ -53,34 +56,40 @@ def register_nvidia_dlls() -> None:
 class Transcriber:
     """Lädt ein Whisper-Modell und wandelt Audio (16 kHz, mono, float32) in Text um."""
 
-    def __init__(self, model_setting: str, device_setting: str, language: str) -> None:
+    def __init__(
+        self,
+        model_setting: str,
+        device_setting: str,
+        language: str,
+        on_download_progress: ProgressCallback | None = None,
+        cancel_download: threading.Event | None = None,
+    ) -> None:
         register_nvidia_dlls()
         import ctranslate2  # erst nach register_nvidia_dlls importieren
 
         self.language = None if language == "auto" else language
         choice = resolve_model(model_setting, device_setting, ctranslate2.get_cuda_device_count())
+        # Erst herunterladen, dann laden: Ein Netzwerkfehler darf nicht als
+        # "GPU nicht nutzbar" gedeutet werden und den CPU-Rückfall auslösen.
+        path = ensure_model(choice.name, on_download_progress, cancel_download)
         try:
-            self._model, self.choice = self._load(choice), choice
+            self._model, self.choice = self._load(choice, path), choice
             if choice.device == "cuda":
-                self._warm_up()  # fehlende cuDNN-DLLs fallen erst beim Rechnen auf
+                self._warm_up()  # fehlende cuBLAS-DLLs fallen erst beim Rechnen auf
         except (RuntimeError, OSError) as exc:
             if choice.device != "cuda":
                 raise
             log.warning("GPU nicht nutzbar (%s) – weiter mit CPU.", exc)
             choice = resolve_model(model_setting, "cpu", 0)
-            self._model, self.choice = self._load(choice), choice
+            path = ensure_model(choice.name, on_download_progress, cancel_download)
+            self._model, self.choice = self._load(choice, path), choice
 
     @staticmethod
-    def _load(choice: ModelChoice):  # -> faster_whisper.WhisperModel
+    def _load(choice: ModelChoice, path: str):  # -> faster_whisper.WhisperModel
         from faster_whisper import WhisperModel
 
-        log.info(
-            "Lade Modell '%s' auf %s (%s) – beim ersten Mal wird es heruntergeladen …",
-            choice.name,
-            choice.device.upper(),
-            choice.compute_type,
-        )
-        return WhisperModel(choice.name, device=choice.device, compute_type=choice.compute_type)
+        log.info("Lade Modell '%s' auf %s (%s).", choice.name, choice.device.upper(), choice.compute_type)
+        return WhisperModel(path, device=choice.device, compute_type=choice.compute_type)
 
     def _warm_up(self) -> None:
         # Ohne VAD, sonst würde die Stille weggefiltert und das Modell gar nicht rechnen.

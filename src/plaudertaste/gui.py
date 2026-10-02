@@ -21,7 +21,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from plaudertaste import autostart, paths, theme
 from plaudertaste.app import App, Status
-from plaudertaste.catalog import AUTO, MODELS, is_model_downloaded, language_display
+from plaudertaste.catalog import AUTO, MODELS, language_display
 from plaudertaste.config import Config, ConfigError, load_config, save_config
 from plaudertaste.devices import list_microphones
 from plaudertaste.history import History
@@ -33,6 +33,7 @@ from plaudertaste.hotkey import (
     start_listener,
 )
 from plaudertaste.main_window import MainWindow, Page
+from plaudertaste.model_download import DownloadCancelled, is_model_downloaded
 from plaudertaste.overlay import Overlay
 from plaudertaste.recorder import Recorder
 from plaudertaste.settings_page import DEFAULT_MICROPHONE_LABEL, Settings, SettingsPage
@@ -58,8 +59,11 @@ def whisper_language(setting: str) -> str | None:
 class Controller(QObject):
     status_changed = Signal(object)  # Status – aus App-Threads
     dictation_finished = Signal(str, float)  # Text, Sprechdauer – aus dem Worker-Thread
+    # object statt int: Qt-ints haben 32 Bit, large-v3 hat über 3 Milliarden Bytes.
+    download_progress = Signal(str, object, object)  # Modell, Bytes, Gesamt – Download-Threads
     model_loaded = Signal(object)  # Transcriber – aus dem Lade-Thread
     model_failed = Signal(str)
+    model_cancelled = Signal()
     hotkey_captured = Signal(str)  # aus dem Tastatur-Thread
 
     def __init__(self, config: Config, log_file: Path) -> None:
@@ -73,6 +77,8 @@ class Controller(QObject):
         self._push_to_talk: PushToTalk | None = None
         self._status = Status.LOADING
         self._model_text = "wird geladen …"
+        self._model_text_before_change = self._model_text
+        self._download_cancel = threading.Event()
         self._recorder = Recorder(config.microphone)
         self._tones = TonePlayer(config.sound)
         self._overlay = Overlay(level_source=lambda: self._recorder.level)
@@ -103,8 +109,11 @@ class Controller(QObject):
         self.settings_page.capture_cancelled.connect(self._stop_hotkey_capture)
         self.status_changed.connect(self._on_status)
         self.dictation_finished.connect(self._on_dictation_finished)
+        self.download_progress.connect(self._on_download_progress)
         self.model_loaded.connect(self._on_model_loaded)
         self.model_failed.connect(self._on_model_failed)
+        self.model_cancelled.connect(self._on_model_cancelled)
+        self.window.download_banner.cancel_requested.connect(self.cancel_download)
         self.hotkey_captured.connect(self._on_hotkey_captured)
 
         self._refresh_start_page()
@@ -142,20 +151,36 @@ class Controller(QObject):
         # Im Hintergrund: Fenster und Icon reagieren sofort, ein altes Modell arbeitet weiter.
         self.tray.set_status(Status.LOADING)
         self.window.start_page.set_status(Status.LOADING)
+        self._download_cancel = threading.Event()  # pro Ladevorgang ein eigenes Signal
         threading.Thread(
-            target=self._load_model, args=(self._config,), name="model-loader", daemon=True
+            target=self._load_model,
+            args=(self._config, self._download_cancel),
+            name="model-loader",
+            daemon=True,
         ).start()
 
-    def _load_model(self, config: Config) -> None:
+    def _load_model(self, config: Config, cancel: threading.Event) -> None:
         try:
-            transcriber = Transcriber(config.model, config.device, config.language)
+            transcriber = Transcriber(
+                config.model, config.device, config.language, self.download_progress.emit, cancel
+            )
+        except DownloadCancelled:
+            self.model_cancelled.emit()
+            return
         except Exception as exc:
             log.exception("Modell konnte nicht geladen werden")
             self.model_failed.emit(str(exc))
             return
         self.model_loaded.emit(transcriber)
 
+    def _on_download_progress(self, model: str, done: int, total: int) -> None:
+        self.window.download_banner.show_progress(model, done, total)
+        self.tray.set_download_progress(model, done * 100 // total if total else 0)
+        if done >= total:
+            log.info("Modell '%s' heruntergeladen.", model)
+
     def _on_model_loaded(self, transcriber: Transcriber) -> None:
+        self.window.download_banner.hide()
         choice = transcriber.choice
         log.info("Modell '%s' bereit (%s).", choice.name, choice.device.upper())
         if self._app is not None:  # Modellwechsel: das alte Modell erst jetzt ablösen
@@ -178,6 +203,7 @@ class Controller(QObject):
         log.info("Bereit! Halte [%s] gedrückt und sprich.", describe_hotkey(self._config.hotkey))
 
     def _on_model_failed(self, message: str) -> None:
+        self.window.download_banner.hide()
         if self._app is None:  # beim Start: ohne Modell geht nichts
             QMessageBox.critical(
                 None,
@@ -189,20 +215,46 @@ class Controller(QObject):
             )
             self.shutdown()
             return
-        # Modellwechsel fehlgeschlagen: Das alte Modell läuft weiter, Config zurücksetzen.
         failed = self._config.model
-        previous = self._config_before_model_change
-        if previous is not None:
-            self._save_config(replace(self._config, model=previous.model, device=previous.device))
-            self._config_before_model_change = None
-        self.tray.set_status(self._status)
-        self.window.start_page.set_status(self._status)
+        self._restore_previous_model()
         QMessageBox.warning(
             self.window,
             TITLE,
             f"Das Modell '{failed}' konnte nicht geladen werden:\n\n{message}\n\n"
             "Das bisherige Modell bleibt aktiv.",
         )
+
+    def cancel_download(self) -> None:
+        if self._app is None:  # erster Start: ohne Modell kann Plaudertaste nicht diktieren
+            answer = QMessageBox.question(
+                self.window,
+                TITLE,
+                "Ohne Sprachmodell kann Plaudertaste nicht diktieren.\n\n"
+                "Download abbrechen und Plaudertaste beenden?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.window.download_banner.cancel_button.setEnabled(False)  # kein Doppelklick
+        self._download_cancel.set()
+
+    def _on_model_cancelled(self) -> None:
+        log.info("Download abgebrochen.")
+        self.window.download_banner.hide()
+        if self._app is None:
+            self.shutdown()
+            return
+        self._restore_previous_model()
+
+    def _restore_previous_model(self) -> None:
+        """Modellwechsel gescheitert oder abgebrochen: Das alte Modell läuft weiter."""
+        previous = self._config_before_model_change
+        if previous is not None:
+            self._save_config(replace(self._config, model=previous.model, device=previous.device))
+            self._config_before_model_change = None
+        self._model_text = self._model_text_before_change
+        self._refresh_start_page()
+        self.tray.set_status(self._status)
+        self.window.start_page.set_status(self._status)
 
     def _activate_push_to_talk(self) -> None:
         if self._app is None:
@@ -325,6 +377,7 @@ class Controller(QObject):
 
         if (new.model, new.device) != (old.model, old.device):
             self._config_before_model_change = old
+            self._model_text_before_change = self._model_text
             self._model_text = "wird geladen …"
             self._load_model_in_background()
         elif new.language != old.language and self._app is not None:
@@ -336,6 +389,7 @@ class Controller(QObject):
 
     def shutdown(self) -> None:
         log.info("Plaudertaste wird beendet.")
+        self._download_cancel.set()  # ein laufender Download-Prozess wird beendet
         self._key_target = None
         if self._listener is not None:
             self._listener.stop()

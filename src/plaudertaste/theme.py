@@ -89,6 +89,16 @@ QComboBox QAbstractItemView {{
     outline: 0;
 }}
 
+QProgressBar {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    border-radius: 5px;
+    max-height: 10px;
+    text-align: center;
+    color: transparent;
+}}
+QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
+
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}

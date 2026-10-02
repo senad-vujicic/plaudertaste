@@ -45,7 +45,7 @@ def test_all_listed_models_exist_in_faster_whisper_and_config() -> None:
 
 
 def test_model_label() -> None:
-    info = ModelInfo("small", 486, "schnell, gut für CPU")
+    info = ModelInfo("small", "Systran/faster-whisper-small", 486, "schnell, gut für CPU")
 
     assert model_label(info, downloaded=False) == "small – 486 MB, schnell, gut für CPU"
     assert model_label(info, downloaded=True).endswith("✓ heruntergeladen")
@@ -54,3 +54,12 @@ def test_model_label() -> None:
 @pytest.mark.parametrize(("mb", "text"), [(78, "78 MB"), (486, "486 MB"), (1622, "1,6 GB"), (3091, "3,1 GB")])
 def test_format_size(mb: int, text: str) -> None:
     assert format_size(mb) == text
+
+
+def test_repo_ids_match_faster_whisper() -> None:
+    """Wir laden selbst herunter – es muss exakt dasselbe Modell sein wie bei faster-whisper."""
+    from faster_whisper.utils import _MODELS  # intern, deshalb nur hier im Test
+
+    assert {info.name: info.repo_id for info in MODELS} == {
+        info.name: _MODELS[info.name] for info in MODELS
+    }

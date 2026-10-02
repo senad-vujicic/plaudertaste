@@ -157,3 +157,60 @@ def test_saving_shows_confirmation(controller: gui.Controller) -> None:
 
     assert not page.saved_label.isHidden()
     assert not page.save_button.isEnabled()  # gespeichert = nichts mehr offen
+
+
+def test_download_progress_shows_banner_also_for_large_models(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Über 2^31 Bytes: würde mit einem 32-Bit-Qt-int überlaufen.
+    controller.download_progress.emit("large-v3", 1_545_500_000, 3_091_000_000)
+
+    banner = controller.window.download_banner
+    assert not banner.isHidden()
+    assert banner.bar.value() == 50
+    assert "1.545 von 3.091 MB" in banner.text.text()
+    assert "50 %" in controller.tray.toolTip()
+
+    monkeypatch.setattr(gui.QMessageBox, "warning", lambda *args: None)
+    controller._on_model_failed("Verbindung abgebrochen")  # Download scheitert
+    assert banner.isHidden()
+
+
+def test_cancelled_model_change_keeps_old_model_and_display(controller: gui.Controller) -> None:
+    controller._model_text = "large-v3-turbo · GPU"
+    controller.apply_settings(Settings(replace(Config(), model="medium"), autostart=False))
+    assert controller.window.start_page.model_label.text() == "wird geladen …"
+
+    controller.cancel_download()
+    assert controller._download_cancel.is_set()
+    controller._on_model_cancelled()  # meldet der Lade-Thread, sobald der Prozess beendet ist
+
+    assert controller._config.model == "auto"
+    assert load_config(paths.config_file()).model == "auto"
+    assert controller.window.start_page.model_label.text() == "large-v3-turbo · GPU"
+    assert controller.window.download_banner.isHidden()
+
+
+def test_failed_model_change_restores_model_display(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gui.QMessageBox, "warning", lambda *args: None)
+    controller._model_text = "large-v3-turbo · GPU"
+    controller.apply_settings(Settings(replace(Config(), model="medium"), autostart=False))
+
+    controller._on_model_failed("Verbindung abgebrochen")
+
+    assert controller.window.start_page.model_label.text() == "large-v3-turbo · GPU"
+
+
+@pytest.mark.parametrize(("answer", "cancelled"), [("Yes", True), ("No", False)])
+def test_cancel_on_first_start_asks_first(
+    controller: gui.Controller, monkeypatch: pytest.MonkeyPatch, answer: str, cancelled: bool
+) -> None:
+    controller._app = None  # erster Start: noch kein Modell geladen
+    button = getattr(gui.QMessageBox.StandardButton, answer)
+    monkeypatch.setattr(gui.QMessageBox, "question", lambda *args: button)
+
+    controller.cancel_download()
+
+    assert controller._download_cancel.is_set() is cancelled

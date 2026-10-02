@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import multiprocessing
 import os
 import sys
 
@@ -30,6 +31,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Nötig für den Download-Prozess in der gebauten .exe (PyInstaller); sonst wirkungslos.
+    multiprocessing.freeze_support()
     args = parse_args(argv)
     log_file = setup_logging(paths.log_dir(), console=args.console)
     # Ohne Symlinks speichert der Modell-Cache nur Kopien statt Verknüpfungen –
