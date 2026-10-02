@@ -182,3 +182,11 @@ def test_voice_commands_switch() -> None:
 
     assert page.settings().config.voice_commands is False
     assert page.save_button.isEnabled()
+
+
+def test_fillers_switch() -> None:
+    page = make_page(Config(remove_fillers=True))
+
+    page.fillers_check.setChecked(False)
+
+    assert page.settings().config.remove_fillers is False

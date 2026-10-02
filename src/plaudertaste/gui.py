@@ -241,6 +241,7 @@ class Controller(QObject):
             on_notice=self.notice.emit,
             dictionary=self._dictionary,
             voice_commands=self._config.voice_commands,
+            remove_fillers=self._config.remove_fillers,
         )
         self._app.start()
         self._activate_push_to_talk()
@@ -476,6 +477,7 @@ class Controller(QObject):
         self._recorder.microphone = new.microphone
         if self._app is not None:
             self._app.voice_commands = new.voice_commands
+            self._app.remove_fillers = new.remove_fillers
         if new.microphone != old.microphone:
             self._set_problem("mic_missing", None)  # wird bei der nächsten Aufnahme neu geprüft
 

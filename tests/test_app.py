@@ -298,3 +298,53 @@ def test_voice_commands_can_be_switched(enabled: bool, expected: list[str]) -> N
     run_dictations(app, 2)
 
     assert pasted == expected
+
+
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [(True, ["Ich komme morgen. "]), (False, ["Ähm, ich komme äh morgen. "])],
+)
+def test_fillers_can_be_switched(enabled: bool, expected: list[str]) -> None:
+    pasted: list[str] = []
+    app = App(
+        FakeTranscriber(["Ähm, ich komme äh morgen."]),
+        FakeRecorder(),
+        paste=pasted.append,
+        remove_fillers=enabled,
+    )  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert pasted == expected
+
+
+def test_processing_order_fillers_commands_dictionary() -> None:
+    from plaudertaste.dictionary import Dictionary, Replacement
+
+    pasted: list[str] = []
+    app = App(
+        FakeTranscriber(["Ähm, Gruß Komma mfg"]),
+        FakeRecorder(),
+        paste=pasted.append,
+        dictionary=Dictionary(replacements=(Replacement("mfg", "Mit freundlichen Grüßen"),)),
+    )  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert pasted == ["Gruß, Mit freundlichen Grüßen "]
+
+
+def test_dictation_of_only_fillers_pastes_nothing() -> None:
+    pasted: list[str] = []
+    reported: list[tuple[str, float]] = []
+    app = App(
+        FakeTranscriber(["Ähm."]),
+        FakeRecorder(),
+        paste=pasted.append,
+        on_dictation=lambda text, seconds: reported.append((text, seconds)),
+    )  # type: ignore[arg-type]
+
+    run_dictations(app, 1)
+
+    assert pasted == []
+    assert reported == []  # kein leerer Eintrag im Verlauf

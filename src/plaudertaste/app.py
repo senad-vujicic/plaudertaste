@@ -13,6 +13,7 @@ from enum import Enum
 import numpy as np
 
 from plaudertaste.dictionary import Dictionary
+from plaudertaste.fillers import remove_fillers
 from plaudertaste.paster import paste_text
 from plaudertaste.recorder import Recorder, RecorderError
 from plaudertaste.transcriber import Transcriber
@@ -71,6 +72,7 @@ class App:
         on_notice: Callable[[Notice], None] = lambda notice: None,
         dictionary: Dictionary = Dictionary(),
         voice_commands: bool = True,
+        remove_fillers: bool = True,
     ) -> None:
         self._transcriber = transcriber
         self._recorder = recorder
@@ -81,6 +83,7 @@ class App:
         self._dictionary = Dictionary()
         self.set_dictionary(dictionary)
         self.voice_commands = voice_commands
+        self.remove_fillers = remove_fillers
         self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
         self._worker = threading.Thread(target=self._work, name="transcriber", daemon=True)
         # Status ergibt sich aus "nimmt gerade auf?" und "wie viele Aufnahmen warten?",
@@ -156,9 +159,15 @@ class App:
             log.info("Kein Text erkannt (%s).", "Stille" if silent else "unverständlich")
             self._on_notice(SILENT_MICROPHONE if silent else NOTHING_UNDERSTOOD)
             return
+        # Reihenfolge: erst Füllwörter weg, dann Sprachbefehle, zuletzt das eigene Wörterbuch.
+        if self.remove_fillers:
+            text = remove_fillers(text)
         if self.voice_commands:
             text = apply_voice_commands(text)
         text = self._dictionary.apply(text)
+        if not text:  # bestand nur aus Füllwörtern ("Ähm.") – nichts einzufügen
+            log.info("Nur Füllwörter erkannt – nichts eingefügt.")
+            return
         # Leerzeichen trennt aufeinanderfolgende Diktate – nicht aber nach einem Zeilenumbruch.
         separator = "" if text.endswith("\n") else " "
         try:

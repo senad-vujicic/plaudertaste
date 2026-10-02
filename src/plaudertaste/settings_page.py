@@ -108,6 +108,7 @@ class SettingsPage(QWidget):
         self.voice_commands_check = ToggleSwitch(
             "Sprachbefehle: „neue Zeile“, „neuer Absatz“, „Komma“, „Fragezeichen“ …"
         )
+        self.fillers_check = ToggleSwitch("Verzögerungslaute entfernen: „äh“, „ähm“, „hm“ …")
         self.autostart_check = ToggleSwitch("Mit Windows starten (still im Infobereich)")
 
         dictation = _form(
@@ -145,7 +146,12 @@ class SettingsPage(QWidget):
         cards.setSpacing(14)
         cards.addWidget(card(card_title("Diktat"), dictation))
         cards.addWidget(
-            card(card_title("Erkennung"), recognition, self.voice_commands_check)
+            card(
+                card_title("Erkennung"),
+                recognition,
+                self.voice_commands_check,
+                self.fillers_check,
+            )
         )
         cards.addWidget(
             card(card_title("Verhalten"), self.sound_check, self.overlay_check, self.autostart_check)
@@ -170,6 +176,7 @@ class SettingsPage(QWidget):
             self.overlay_check,
             self.autostart_check,
             self.voice_commands_check,
+            self.fillers_check,
         ):
             switch.toggled.connect(self._on_changed)
         self._on_changed()
@@ -211,6 +218,7 @@ class SettingsPage(QWidget):
         self.sound_check.setChecked(config.sound)
         self.overlay_check.setChecked(config.overlay)
         self.voice_commands_check.setChecked(config.voice_commands)
+        self.fillers_check.setChecked(config.remove_fillers)
         self.autostart_check.setChecked(self._saved.autostart)
         self._update_model_hint()
         self._on_changed()
@@ -225,6 +233,7 @@ class SettingsPage(QWidget):
             sound=self.sound_check.isChecked(),
             overlay=self.overlay_check.isChecked(),
             voice_commands=self.voice_commands_check.isChecked(),
+            remove_fillers=self.fillers_check.isChecked(),
         )
         return Settings(config=config, autostart=self.autostart_check.isChecked())
 

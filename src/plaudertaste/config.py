@@ -33,6 +33,7 @@ _COMMENTS: dict[str, str] = {
         "Sprachbefehle \"neue Zeile\", \"neuer Absatz\", \"Komma\", \"Fragezeichen\", "
         "\"Ausrufezeichen\", \"Doppelpunkt\": true oder false"
     ),
+    "remove_fillers": "Verzögerungslaute wie \"äh\", \"ähm\", \"hm\" entfernen: true oder false",
 }
 _TYPE_HINTS = {str: "ein Text in Anführungszeichen", bool: "true oder false"}
 
@@ -51,6 +52,7 @@ class Config:
     sound: bool = True
     overlay: bool = True
     voice_commands: bool = True
+    remove_fillers: bool = True
 
 
 def render_config(config: Config) -> str:

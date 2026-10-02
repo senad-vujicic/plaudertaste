@@ -324,6 +324,9 @@ def test_broken_dictionary_file_is_kept_as_backup(
 
 
 def test_voice_commands_setting_reaches_running_app(controller: gui.Controller) -> None:
-    controller.apply_settings(Settings(replace(Config(), voice_commands=False), autostart=False))
+    controller.apply_settings(
+        Settings(replace(Config(), voice_commands=False, remove_fillers=False), autostart=False)
+    )
 
     assert controller._app.voice_commands is False  # type: ignore[union-attr]
+    assert controller._app.remove_fillers is False  # type: ignore[union-attr]
