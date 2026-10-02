@@ -11,9 +11,9 @@ pytestmark = pytest.mark.usefixtures("qapp")
 MICS = ["INPUT 1/2 (2- Volt 2)", "Headset (USB)"]
 
 
-def make_page(config: Config = Config(), autostart: bool = False) -> SettingsPage:
+def make_page(config: Config | None = None, autostart: bool = False) -> SettingsPage:
     page = SettingsPage()
-    page.load(config, autostart, MICS, downloaded_models={"small"})
+    page.load(config or Config(), autostart, MICS, downloaded_models={"small"})
     return page
 
 
@@ -39,7 +39,9 @@ def test_changes_are_returned_on_save() -> None:
 
     assert saved == [
         Settings(
-            Config(model="medium", language="fr", microphone="INPUT 1/2 (2- Volt 2)", overlay=False),
+            Config(
+                model="medium", language="fr", microphone="INPUT 1/2 (2- Volt 2)", overlay=False
+            ),
             autostart=True,
         )
     ]

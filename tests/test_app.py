@@ -67,7 +67,9 @@ def test_dictation_is_transcribed_and_pasted() -> None:
 
 def test_consecutive_dictations_are_separated_by_a_space() -> None:
     pasted: list[str] = []
-    app = App(FakeTranscriber(["Hey, was geht?", "Alles gut."]), FakeRecorder(), paste=pasted.append)  # type: ignore[arg-type]
+    app = App(
+        FakeTranscriber(["Hey, was geht?", "Alles gut."]), FakeRecorder(), paste=pasted.append
+    )  # type: ignore[arg-type]
 
     run_dictations(app, 2)
 
@@ -129,7 +131,12 @@ def test_missing_microphone_is_logged(caplog: pytest.LogCaptureFixture) -> None:
 
 def test_status_sequence_for_one_dictation() -> None:
     statuses: list[Status] = []
-    app = App(FakeTranscriber(["Hallo"]), FakeRecorder(), paste=lambda text: None, on_status=statuses.append)  # type: ignore[arg-type]
+    app = App(
+        FakeTranscriber(["Hallo"]),
+        FakeRecorder(),
+        paste=lambda text: None,
+        on_status=statuses.append,
+    )  # type: ignore[arg-type]
 
     run_dictations(app, 1)
 

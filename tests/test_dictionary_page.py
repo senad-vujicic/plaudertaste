@@ -62,7 +62,9 @@ def test_multiline_snippet_is_shown_on_one_row() -> None:
 
 def test_remove_replacement() -> None:
     page, changes = make_page()
-    page.set_dictionary(Dictionary(replacements=(Replacement("mfg", "MfG"), Replacement("lg", "LG"))))
+    page.set_dictionary(
+        Dictionary(replacements=(Replacement("mfg", "MfG"), Replacement("lg", "LG")))
+    )
 
     page.replacement_table.selectRow(1)
     page.remove_replacement_button.click()

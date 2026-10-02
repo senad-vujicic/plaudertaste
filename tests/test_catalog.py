@@ -2,8 +2,8 @@ import pytest
 from faster_whisper import available_models
 
 from plaudertaste.catalog import format_size, language_name, language_options, model_label
-from plaudertaste.models import MODELS, ModelInfo
 from plaudertaste.config import VALID_MODELS
+from plaudertaste.models import MODELS, ModelInfo
 
 pytestmark = pytest.mark.usefixtures("qapp")
 
@@ -30,7 +30,6 @@ def test_language_name(code: str, name: str) -> None:
     assert language_name(code) == name
 
 
-
 def test_all_listed_models_exist_in_faster_whisper_and_config() -> None:
     names = {info.name for info in MODELS}
 
@@ -45,7 +44,9 @@ def test_model_label() -> None:
     assert model_label(info, downloaded=True).endswith("✓ heruntergeladen")
 
 
-@pytest.mark.parametrize(("mb", "text"), [(78, "78 MB"), (486, "486 MB"), (1622, "1,6 GB"), (3091, "3,1 GB")])
+@pytest.mark.parametrize(
+    ("mb", "text"), [(78, "78 MB"), (486, "486 MB"), (1622, "1,6 GB"), (3091, "3,1 GB")]
+)
 def test_format_size(mb: int, text: str) -> None:
     assert format_size(mb) == text
 

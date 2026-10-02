@@ -33,10 +33,9 @@ class ModelChoice:
 
 def resolve_model(model_setting: str, device_setting: str, cuda_devices: int) -> ModelChoice:
     """Bestimmt Modell, Gerät und Rechengenauigkeit aus Config und vorhandener Hardware."""
-    if device_setting == AUTO:
+    device = device_setting
+    if device == AUTO:
         device = "cuda" if cuda_devices > 0 else "cpu"
-    else:
-        device = device_setting
     name = AUTO_MODEL[device] if model_setting == AUTO else model_setting
     return ModelChoice(name=name, device=device, compute_type=COMPUTE_TYPE[device])
 
@@ -99,7 +98,9 @@ class Transcriber:
     def _load(choice: ModelChoice, path: str) -> WhisperModel:
         from faster_whisper import WhisperModel
 
-        log.info("Lade Modell '%s' auf %s (%s).", choice.name, choice.device.upper(), choice.compute_type)
+        log.info(
+            "Lade Modell '%s' auf %s (%s).", choice.name, choice.device.upper(), choice.compute_type
+        )
         return WhisperModel(path, device=choice.device, compute_type=choice.compute_type)
 
     def _warm_up(self) -> None:

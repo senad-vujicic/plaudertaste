@@ -230,7 +230,6 @@ def test_bad_hotkeys_are_explained(text: str, hint: str) -> None:
     assert problem is not None and hint in problem
 
 
-
 # --- Doppeltippen (Freihand) ---
 
 

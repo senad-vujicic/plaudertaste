@@ -1,3 +1,4 @@
+import contextlib
 import sys
 import winreg
 from collections.abc import Iterator
@@ -15,10 +16,8 @@ TEST_KEY = r"Software\PlaudertasteTests\Run"
 def key() -> Iterator[str]:
     yield TEST_KEY
     for path in (TEST_KEY, r"Software\PlaudertasteTests"):
-        try:
+        with contextlib.suppress(FileNotFoundError):
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, path)
-        except FileNotFoundError:
-            pass
 
 
 def read_value(key_path: str) -> str:
@@ -55,4 +54,6 @@ def test_frozen_command_uses_exe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\Programme\Plaudertaste\Plaudertaste.exe")
 
-    assert autostart.startup_command() == r'"C:\Programme\Plaudertaste\Plaudertaste.exe" --background'
+    assert (
+        autostart.startup_command() == r'"C:\Programme\Plaudertaste\Plaudertaste.exe" --background'
+    )

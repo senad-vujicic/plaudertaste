@@ -6,6 +6,7 @@ in der Config gespeichert, damit beides nie auseinanderlaufen kann.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import winreg
 from pathlib import Path
@@ -38,7 +39,5 @@ def set_enabled(enabled: bool, key_path: str = RUN_KEY) -> None:
         if enabled:
             winreg.SetValueEx(key, VALUE_NAME, 0, winreg.REG_SZ, startup_command())
         else:
-            try:
+            with contextlib.suppress(FileNotFoundError):  # war schon aus
                 winreg.DeleteValue(key, VALUE_NAME)
-            except FileNotFoundError:
-                pass  # war schon aus

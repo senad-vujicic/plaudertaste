@@ -52,7 +52,9 @@ def controller(
     controller._tones = TonePlayer(enabled=True, play=lambda tone: None)  # Tests bleiben stumm
     controller.loads: list[Config] = []  # type: ignore[attr-defined]
     monkeypatch.setattr(
-        controller, "_load_model_in_background", lambda: controller.loads.append(controller._config)  # type: ignore[attr-defined]
+        controller,
+        "_load_model_in_background",
+        lambda: controller.loads.append(controller._config),  # type: ignore[attr-defined]
     )
     controller._app = FakeApp()  # type: ignore[assignment]
     controller._activate_push_to_talk()
@@ -140,7 +142,9 @@ def test_closing_window_hides_it_and_hints_once(
     controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     messages: list[str] = []
-    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: messages.append(text))
+    monkeypatch.setattr(
+        controller.tray, "showMessage", lambda title, text, *rest: messages.append(text)
+    )
     controller.show_window(Page.START)
 
     controller.window.close()
@@ -236,7 +240,9 @@ def test_serious_notice_goes_to_overlay_tray_and_start_page(
     from plaudertaste.app import MIC_UNAVAILABLE
 
     tray_messages: list[str] = []
-    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text))
+    monkeypatch.setattr(
+        controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text)
+    )
 
     controller._on_notice(MIC_UNAVAILABLE)
 
@@ -256,7 +262,9 @@ def test_minor_notice_only_in_overlay(
     from plaudertaste.app import NOTHING_UNDERSTOOD
 
     tray_messages: list[str] = []
-    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text))
+    monkeypatch.setattr(
+        controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text)
+    )
 
     controller._on_notice(NOTHING_UNDERSTOOD)
 
@@ -269,7 +277,9 @@ def test_missing_microphone_shows_problem_once(
     controller: gui.Controller, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     tray_messages: list[str] = []
-    monkeypatch.setattr(controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text))
+    monkeypatch.setattr(
+        controller.tray, "showMessage", lambda title, text, *rest: tray_messages.append(text)
+    )
     controller._config = replace(controller._config, microphone="Headset (USB)")
     controller._recorder.fell_back_to_default = True
 
@@ -368,7 +378,9 @@ def test_update_is_shown_on_start_page(
 
     monkeypatch.setattr(controller.tray, "showMessage", lambda *args: None)
 
-    controller._on_update_available(Update("0.2.0", "https://github.com/senad-vujicic/plaudertaste/releases/tag/v0.2.0"))
+    controller._on_update_available(
+        Update("0.2.0", "https://github.com/senad-vujicic/plaudertaste/releases/tag/v0.2.0")
+    )
 
     page = controller.window.start_page
     assert not page.update_card.isHidden()

@@ -4,7 +4,8 @@ from plaudertaste.ui import ToggleSwitch, count_text, format_duration
 
 
 @pytest.mark.parametrize(
-    ("seconds", "text"), [(0, "0 s"), (44.6, "45 s"), (60, "1 min"), (3599, "59 min"), (3900, "1 h 05 min")]
+    ("seconds", "text"),
+    [(0, "0 s"), (44.6, "45 s"), (60, "1 min"), (3599, "59 min"), (3900, "1 h 05 min")],
 )
 def test_format_duration(seconds: float, text: str) -> None:
     assert format_duration(seconds) == text

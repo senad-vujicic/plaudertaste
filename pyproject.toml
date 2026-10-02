@@ -26,6 +26,7 @@ gpu = [
 ]
 dev = [
     "pytest>=8",
+    "ruff>=0.16",
 ]
 
 [project.scripts]
@@ -33,6 +34,15 @@ plaudertaste = "plaudertaste.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W: Stil, F: echte Fehler (z. B. unbenutzte Namen), I: Import-Reihenfolge,
+# B: typische Fallen, UP: moderne Python-Schreibweise, SIM: Vereinfachungen
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

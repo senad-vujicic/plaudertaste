@@ -155,4 +155,6 @@ def test_download_is_recorded_in_network_protocol(monkeypatch: pytest.MonkeyPatc
 
     model_download.ensure_model("tiny")
 
-    assert [(c.host, c.purpose) for c in fresh.connections] == [("huggingface.co", "Modell-Download")]
+    assert [(c.host, c.purpose) for c in fresh.connections] == [
+        ("huggingface.co", "Modell-Download")
+    ]

@@ -18,7 +18,10 @@ MFG = Replacement("mfg", "Mit freundlichen Grüßen")
     ("text", "expected"),
     [
         ("Danke und mfg", "Danke und Mit freundlichen Grüßen"),
-        ("Danke und MFG.", "Danke und Mit freundlichen Grüßen."),  # Groß/klein egal, Satzzeichen bleibt
+        (
+            "Danke und MFG.",
+            "Danke und Mit freundlichen Grüßen.",
+        ),  # Groß/klein egal, Satzzeichen bleibt
         ("Mfg, Senad", "Mit freundlichen Grüßen, Senad"),
         ("mfgx ist kein Treffer", "mfgx ist kein Treffer"),  # nur ganze Wörter
         ("Ohne Kürzel", "Ohne Kürzel"),
@@ -29,7 +32,9 @@ def test_replacements_whole_words_ignoring_case(text: str, expected: str) -> Non
 
 
 def test_multi_word_replacement_tolerates_spacing() -> None:
-    dictionary = Dictionary(replacements=(Replacement("meine Adresse", "Hauptstraße 1, 85049 Ingolstadt"),))
+    dictionary = Dictionary(
+        replacements=(Replacement("meine Adresse", "Hauptstraße 1, 85049 Ingolstadt"),)
+    )
 
     assert dictionary.apply("Schick es an Meine   adresse bitte") == (
         "Schick es an Hauptstraße 1, 85049 Ingolstadt bitte"
@@ -68,7 +73,11 @@ def test_editing_keeps_entries_unique() -> None:
     assert dictionary.terms == ("Plaudertaste",)
     assert dictionary.without_term("Plaudertaste").terms == ()
 
-    dictionary = Dictionary().with_replacement("mfg", "MfG").with_replacement("MFG", "Mit freundlichen Grüßen")
+    dictionary = (
+        Dictionary()
+        .with_replacement("mfg", "MfG")
+        .with_replacement("MFG", "Mit freundlichen Grüßen")
+    )
     assert dictionary.replacements == (Replacement("MFG", "Mit freundlichen Grüßen"),)
     assert dictionary.with_replacement("leer", " ").replacements == dictionary.replacements
     assert dictionary.without_replacement("MFG").replacements == ()

@@ -70,7 +70,9 @@ class Stats:
             return {}
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
-            return {date.fromisoformat(day): Totals(**values) for day, values in raw["days"].items()}
+            return {
+                date.fromisoformat(day): Totals(**values) for day, values in raw["days"].items()
+            }
         except (ValueError, KeyError, TypeError) as exc:
             # Kaputte Datei aufheben statt still zu überschreiben – und neu anfangen.
             backup = self._path.with_suffix(".defekt.json")

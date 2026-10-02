@@ -6,7 +6,16 @@ import subprocess
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSignalBlocker, Qt, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from plaudertaste import theme

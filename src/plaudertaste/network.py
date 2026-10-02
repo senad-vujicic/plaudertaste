@@ -86,7 +86,10 @@ class NetworkGuard:
                 return connection
             self._connections.append(connection)
         log.info(
-            "Netzwerk: %s %s (%s)", "BLOCKIERT" if blocked else "Verbindung zu", host, connection.purpose
+            "Netzwerk: %s %s (%s)",
+            "BLOCKIERT" if blocked else "Verbindung zu",
+            host,
+            connection.purpose,
         )
         for listener in self._listeners:
             listener(connection)

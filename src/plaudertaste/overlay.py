@@ -179,8 +179,12 @@ class Overlay(QWidget):
         painter.setPen(TEXT)
         painter.setFont(self._font)
         text_area = QRectF(42, 0, self.width() - 58, HEIGHT)
-        elided = self.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(text_area.width()))
-        painter.drawText(text_area, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
+        elided = self.fontMetrics().elidedText(
+            text, Qt.TextElideMode.ElideRight, int(text_area.width())
+        )
+        painter.drawText(
+            text_area, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided
+        )
 
     def _paint_recording(self, painter: QPainter) -> None:
         middle = HEIGHT / 2
@@ -223,4 +227,6 @@ class Overlay(QWidget):
             painter.setBrush(color)
             radius = 4 + 1.5 * pulse
             center_x = self.width() / 2 + (i - 1) * 18
-            painter.drawEllipse(QRectF(center_x - radius, HEIGHT / 2 - radius, 2 * radius, 2 * radius))
+            painter.drawEllipse(
+                QRectF(center_x - radius, HEIGHT / 2 - radius, 2 * radius, 2 * radius)
+            )

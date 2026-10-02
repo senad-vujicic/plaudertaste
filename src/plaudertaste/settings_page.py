@@ -20,12 +20,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from plaudertaste import theme
 from plaudertaste.catalog import AUTO_MODEL_LABEL, format_size, language_options, model_label
 from plaudertaste.config import AUTO, Config
 from plaudertaste.hotkey import describe_hotkey, hotkey_problem
 from plaudertaste.models import MODELS
 from plaudertaste.network import Connection
-from plaudertaste import theme
 from plaudertaste.ui import (
     SavedIndicator,
     ToggleSwitch,
@@ -146,7 +146,9 @@ class SettingsPage(QWidget):
 
         for box in (self.model_box, self.language_box, self.microphone_box):
             # nicht so breit wie der längste Eintrag werden – lange Einträge werden gekürzt
-            box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            box.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
             box.setMinimumContentsLength(20)
 
         # Config-Feld -> Schalter: eine Tabelle statt Einzelzeilen beim Laden, Auslesen und
@@ -163,7 +165,9 @@ class SettingsPage(QWidget):
         # Nur die Karten scrollen – Speichern/Verwerfen bleiben immer sichtbar.
         cards = scrolling_column(
             card(card_title("Diktat"), dictation),
-            card(card_title("Erkennung"), recognition, self.voice_commands_check, self.fillers_check),
+            card(
+                card_title("Erkennung"), recognition, self.voice_commands_check, self.fillers_check
+            ),
             card(
                 card_title("Verhalten"),
                 self.sound_check,

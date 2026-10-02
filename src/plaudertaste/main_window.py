@@ -114,8 +114,11 @@ class StartPage(QWidget):
         details.setHorizontalSpacing(24)
         details.setVerticalSpacing(8)
         for row, (name, value) in enumerate(
-            [("Modell", self.model_label), ("Sprache", self.language_label),
-             ("Mikrofon", self.microphone_label)]
+            [
+                ("Modell", self.model_label),
+                ("Sprache", self.language_label),
+                ("Mikrofon", self.microphone_label),
+            ]
         ):
             details.addWidget(muted_label(name), row, 0)
             details.addWidget(value, row, 1)
@@ -133,9 +136,7 @@ class StartPage(QWidget):
         self.update_button = QPushButton("Zur Download-Seite")
         self.update_button.setObjectName("primary")
         self._update_url = ""
-        self.update_button.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl(self._update_url))
-        )
+        self.update_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._update_url)))
         update_row = QHBoxLayout()
         update_row.addWidget(self.update_label, 1)
         update_row.addWidget(self.update_button)
@@ -178,8 +179,10 @@ class StartPage(QWidget):
 
     def show_update(self, version: str, url: str) -> None:
         self._update_url = url
-        self.update_label.setText(f"<b>Neue Version {version} verfügbar.</b> Deine Einstellungen "
-                                  "und dein Wörterbuch bleiben beim Aktualisieren erhalten.")
+        self.update_label.setText(
+            f"<b>Neue Version {version} verfügbar.</b> Deine Einstellungen "
+            "und dein Wörterbuch bleiben beim Aktualisieren erhalten."
+        )
         self.update_card.setVisible(True)
 
     def set_problems(self, problems: list[tuple[str, str]]) -> None:
@@ -276,7 +279,9 @@ class StatsPage(QWidget):
                 value.setAlignment(Qt.AlignmentFlag.AlignRight)
                 grid.addWidget(muted_label(name), row, 0)
                 grid.addWidget(value, row, 1)
-            columns.addWidget(card(card_title(title), words, muted_label("Wörter"), grid, spacing=6))
+            columns.addWidget(
+                card(card_title(title), words, muted_label("Wörter"), grid, spacing=6)
+            )
             self._words.append(words)
             self._details.append(details)
 
@@ -390,6 +395,7 @@ class MainWindow(QMainWindow):
                 self.dictionary_page,
                 self.settings_page,
             ),
+            strict=True,  # gleich viele Seiten und Einträge – sonst sofort ein Fehler
         ):
             self.sidebar.addItem(_PAGE_NAMES[page])
             # Verlauf, Wörterbuch, Einstellungen scrollen selbst (feste Kopf-/Fußzeile); Start und

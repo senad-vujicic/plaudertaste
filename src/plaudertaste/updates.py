@@ -25,7 +25,7 @@ class Update:
 
 
 def parse_version(text: str) -> tuple[int, ...] | None:
-    """"v1.10.0" -> (1, 10, 0). Als Zahlen, damit 0.10.0 neuer ist als 0.9.0."""
+    """Versionsnummer als Zahlen, z. B. v1.10.0 -> (1, 10, 0) – damit 0.10.0 neuer ist als 0.9.0."""
     match = re.fullmatch(r"v?(\d+(?:\.\d+)*)", text.strip())
     return tuple(int(part) for part in match.group(1).split(".")) if match else None
 

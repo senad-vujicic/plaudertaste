@@ -162,11 +162,17 @@ class Controller(QObject):
         self._listener = start_listener(self._on_key_press, self._on_key_release, self._swallow)
         self._load_model_in_background()
         if self._config.check_updates and not self._config.offline_mode:
-            threading.Thread(target=self._check_for_update, name="update-check", daemon=True).start()
+            threading.Thread(
+                target=self._check_for_update, name="update-check", daemon=True
+            ).start()
 
     def _notify(self, text: str, warning: bool = True) -> None:
         """Windows-Hinweis unten rechts – nimmt nie den Fokus."""
-        icon = QSystemTrayIcon.MessageIcon.Warning if warning else QSystemTrayIcon.MessageIcon.Information
+        icon = (
+            QSystemTrayIcon.MessageIcon.Warning
+            if warning
+            else QSystemTrayIcon.MessageIcon.Information
+        )
         self.tray.showMessage(TITLE, text, icon, 5000)
 
     def _refresh_connections(self) -> None:
@@ -182,7 +188,9 @@ class Controller(QObject):
     def _on_update_available(self, update: Update) -> None:
         log.info("Neue Version verfügbar: %s", update.version)
         self.window.start_page.show_update(update.version, update.url)
-        self._notify(f"Neue Version {update.version} verfügbar – Details auf der Startseite.", warning=False)
+        self._notify(
+            f"Neue Version {update.version} verfügbar – Details auf der Startseite.", warning=False
+        )
 
     def show_window(self, page: Page) -> None:
         if page is Page.SETTINGS and self.window.current_page() is Page.SETTINGS:
@@ -199,10 +207,12 @@ class Controller(QObject):
         if target is None:
             return
         try:
-            if isinstance(target, PushToTalk) and self._app is not None:
-                if not target.is_hotkey_key(key) and key != UNDO_KEY:
-                    # Eigenes Tippen: Der Cursor steht evtl. woanders – Rückgängig sperren.
-                    self._app.forget_last_dictation()
+            typing_own_text = (
+                isinstance(target, PushToTalk) and not target.is_hotkey_key(key) and key != UNDO_KEY
+            )
+            if typing_own_text and self._app is not None:
+                # Eigenes Tippen: Der Cursor steht evtl. woanders – Rückgängig sperren.
+                self._app.forget_last_dictation()
             target.press(key)
         except Exception:
             log.exception("Fehler bei Tastendruck")
@@ -369,7 +379,9 @@ class Controller(QObject):
         if status is Status.RECORDING:  # Aufnahme klappt -> Mikrofon-Probleme neu bewerten
             self._set_problem("mic", None)
             missing = self._recorder.fell_back_to_default
-            self._set_problem("mic_missing", self._missing_microphone_problem() if missing else None)
+            self._set_problem(
+                "mic_missing", self._missing_microphone_problem() if missing else None
+            )
         self.tray.set_status(status)  # zuerst Anzeige: play() braucht ~100 ms
         self.window.start_page.set_status(status)
         if status is not Status.RECORDING:
@@ -387,12 +399,15 @@ class Controller(QObject):
 
     def _stop_forgotten_hands_free(self) -> None:
         if self._push_to_talk is not None and self._push_to_talk.is_hands_free:
-            log.info("Freihand-Aufnahme nach %d min automatisch beendet.", HANDS_FREE_LIMIT_MS // 60000)
+            log.info(
+                "Freihand-Aufnahme nach %d min automatisch beendet.", HANDS_FREE_LIMIT_MS // 60000
+            )
             self._push_to_talk.stop_hands_free()
 
     def _on_notice(self, notice: Notice) -> None:
         """Problem während des Diktierens: rot im Overlay, ernste zusätzlich als Windows-Hinweis.
-        Ein Fehlerfenster wäre hier falsch – es nähme den Fokus, das nächste Diktat landete darin."""
+        Ein Fehlerfenster wäre hier falsch – es nähme den Fokus, und das nächste Diktat
+        landete darin."""
         log.info("Hinweis an Nutzer: %s", notice.text)
         if self._config.overlay:
             self._overlay.show_message(notice.text)
@@ -432,8 +447,11 @@ class Controller(QObject):
             log.error("%s – gesichert als %s", exc, backup)
             self._set_problem(
                 "dictionary",
-                ("Wörterbuch-Datei fehlerhaft", f"Sie wurde als „{backup.name}“ gesichert, "
-                 "das Wörterbuch startet leer. Details in der Logdatei."),
+                (
+                    "Wörterbuch-Datei fehlerhaft",
+                    f"Sie wurde als „{backup.name}“ gesichert, "
+                    "das Wörterbuch startet leer. Details in der Logdatei.",
+                ),
             )
         self.dictionary_page.set_dictionary(self._dictionary)
 
@@ -593,8 +611,10 @@ def run(log_file: Path, show_window: bool = True) -> int:
     if lock is None:
         log.error("Plaudertaste läuft bereits – zweiter Start abgebrochen.")
         QMessageBox.information(
-            None, TITLE, "Plaudertaste läuft bereits.\n\n"
-            "Du findest es unten rechts im Infobereich der Taskleiste."
+            None,
+            TITLE,
+            "Plaudertaste läuft bereits.\n\n"
+            "Du findest es unten rechts im Infobereich der Taskleiste.",
         )
         return 1
 

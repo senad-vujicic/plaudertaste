@@ -10,9 +10,7 @@ from PySide6.QtCore import QLocale
 from plaudertaste.config import AUTO
 from plaudertaste.models import AUTO_MODEL, ModelInfo
 
-AUTO_MODEL_LABEL = (
-    f"Automatisch – {AUTO_MODEL['cuda']} mit NVIDIA-GPU, sonst {AUTO_MODEL['cpu']}"
-)
+AUTO_MODEL_LABEL = f"Automatisch – {AUTO_MODEL['cuda']} mit NVIDIA-GPU, sonst {AUTO_MODEL['cpu']}"
 # Whisper nutzt für Javanisch den veralteten Code "jw" – Qt kennt nur den ISO-Code "jv".
 _QT_LANGUAGE_CODES = {"jw": "jv"}
 # Oben angeheftet, mit festen Namen (Qt nennt "en" sonst "American English").

@@ -19,27 +19,28 @@ def whisper_language(setting: str) -> str | None:
     """Config-Wert -> Whisper-Parameter ("auto" heißt: Whisper erkennt die Sprache selbst)."""
     return None if setting == AUTO else setting
 
+
 # Kommentare, die beim Speichern über jeden Eintrag geschrieben werden.
 _COMMENTS: dict[str, str] = {
     "hotkey": (
         "Taste(n), die zum Sprechen gehalten werden. Mehrere mit '+' verbinden.\n"
-        "Beispiele: \"ctrl_r\" (rechte Strg), \"f9\", \"ctrl+cmd\" (Strg + Win)"
+        'Beispiele: "ctrl_r" (rechte Strg), "f9", "ctrl+cmd" (Strg + Win)'
     ),
-    "language": "Sprache als ISO-Code (z. B. \"de\", \"en\") oder \"auto\" für automatische Erkennung",
+    "language": 'Sprache als ISO-Code (z. B. "de", "en") oder "auto" für automatische Erkennung',
     "model": (
-        "Whisper-Modell: \"auto\", \"tiny\", \"base\", \"small\", \"medium\", "
-        "\"large-v3\", \"large-v3-turbo\"\n"
-        "\"auto\" = large-v3-turbo mit NVIDIA-GPU, sonst small"
+        'Whisper-Modell: "auto", "tiny", "base", "small", "medium", '
+        '"large-v3", "large-v3-turbo"\n'
+        '"auto" = large-v3-turbo mit NVIDIA-GPU, sonst small'
     ),
-    "device": "Rechengerät: \"auto\", \"cpu\" oder \"cuda\" (NVIDIA-GPU)",
-    "microphone": "Mikrofon-Name wie in den Einstellungen angezeigt, \"\" = Windows-Standard",
+    "device": 'Rechengerät: "auto", "cpu" oder "cuda" (NVIDIA-GPU)',
+    "microphone": 'Mikrofon-Name wie in den Einstellungen angezeigt, "" = Windows-Standard',
     "sound": "Kurzer Ton bei Start und Ende der Aufnahme: true oder false",
     "overlay": "Anzeige unten am Bildschirm während Aufnahme und Verarbeitung: true oder false",
     "voice_commands": (
-        "Sprachbefehle \"neue Zeile\", \"neuer Absatz\", \"Komma\", \"Fragezeichen\", "
-        "\"Ausrufezeichen\", \"Doppelpunkt\": true oder false"
+        'Sprachbefehle "neue Zeile", "neuer Absatz", "Komma", "Fragezeichen", '
+        '"Ausrufezeichen", "Doppelpunkt": true oder false'
     ),
-    "remove_fillers": "Verzögerungslaute wie \"äh\", \"ähm\", \"hm\" entfernen: true oder false",
+    "remove_fillers": 'Verzögerungslaute wie "äh", "ähm", "hm" entfernen: true oder false',
     "offline_mode": (
         "Offline-Modus: Plaudertaste blockiert jede Internetverbindung (keine Downloads, "
         "keine Update-Prüfung): true oder false"

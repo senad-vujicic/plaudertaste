@@ -93,7 +93,8 @@ class Recorder:
 
     def _on_audio(self, indata: memoryview, frames: int, time: object, status: object) -> None:
         # Läuft im Audio-Thread: nur kopieren, nichts Langsames tun.
-        # indata sind rohe Bytes (mono float32); copy(), weil der Puffer danach wiederverwendet wird.
+        # indata sind rohe Bytes (mono float32); copy(), weil der Puffer danach
+        # wiederverwendet wird.
         samples = np.frombuffer(indata, dtype=np.float32).copy()
         self._level = float(np.sqrt(np.mean(samples**2))) if samples.size else 0.0
         with self._lock:

@@ -191,7 +191,9 @@ def ensure_model(
     # hier selbst ins Netzwerk-Protokoll eintragen.
     guard.record("huggingface.co", "Modell-Download")
     report = on_progress or (lambda model, done, total: None)
-    counter = ProgressCounter(info.size_mb * 1_000_000, lambda done, total: report(name, done, total))
+    counter = ProgressCounter(
+        info.size_mb * 1_000_000, lambda done, total: report(name, done, total)
+    )
     path = download_in_process(info.repo_id, counter, cancel or threading.Event())
     counter.finish()
     return path

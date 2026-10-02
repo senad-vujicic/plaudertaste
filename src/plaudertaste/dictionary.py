@@ -60,7 +60,13 @@ class Dictionary:
                 # Signatur.") fällt weg, sonst stünde es einsam unter dem Baustein.
                 pattern += r"[.,;:!?]?"
             # Funktion statt Text als Ersatz: so werden "\1" o. Ä. im Ersatz nicht ausgewertet.
-            text = re.sub(pattern, lambda _: replacement.written, text, flags=re.IGNORECASE)
+            # Der Wert wird fest gebunden (written=…), nicht über die Schleifenvariable gelesen.
+            text = re.sub(
+                pattern,
+                lambda _, written=replacement.written: written,
+                text,
+                flags=re.IGNORECASE,
+            )
         return text
 
     def with_term(self, term: str) -> Dictionary:
@@ -101,7 +107,9 @@ def load_dictionary(path: Path) -> Dictionary:
     except tomllib.TOMLDecodeError as exc:
         raise DictionaryError(f"Fehler in {path}: {exc}") from exc
     except (KeyError, TypeError) as exc:
-        raise DictionaryError(f"Fehler in {path}: Ersetzungen brauchen 'spoken' und 'written'.") from exc
+        raise DictionaryError(
+            f"Fehler in {path}: Ersetzungen brauchen 'spoken' und 'written'."
+        ) from exc
 
 
 def save_dictionary(path: Path, dictionary: Dictionary) -> None:

@@ -50,7 +50,9 @@ NOTHING_UNDERSTOOD = Notice("Nichts verstanden – bitte etwas länger oder deut
 PASTE_FAILED = Notice(
     "Text konnte nicht eingefügt werden – er liegt im Verlauf zum Kopieren.", serious=True
 )
-PROCESSING_FAILED = Notice("Fehler bei der Spracherkennung – Details in der Logdatei.", serious=True)
+PROCESSING_FAILED = Notice(
+    "Fehler bei der Spracherkennung – Details in der Logdatei.", serious=True
+)
 UNDONE = Notice("Letztes Diktat gelöscht.")
 NOTHING_TO_UNDO = Notice("Nichts zum Rückgängigmachen – seit dem letzten Diktat wurde getippt.")
 
@@ -75,7 +77,7 @@ class App:
         on_status: Callable[[Status], None] = lambda status: None,
         on_dictation: Callable[[str, float], None] = lambda text, seconds: None,
         on_notice: Callable[[Notice], None] = lambda notice: None,
-        dictionary: Dictionary = Dictionary(),
+        dictionary: Dictionary | None = None,
         voice_commands: bool = True,
         remove_fillers: bool = True,
     ) -> None:
@@ -88,7 +90,7 @@ class App:
         self._on_status = on_status
         self._on_dictation = on_dictation
         self._on_notice = on_notice
-        self.set_dictionary(dictionary)  # setzt self._dictionary und die Whisper-Hinweise
+        self.set_dictionary(dictionary or Dictionary())  # setzt auch die Whisper-Hinweise
         self.voice_commands = voice_commands
         self.remove_fillers = remove_fillers
         self._jobs: queue.Queue[np.ndarray | object | None] = queue.Queue()

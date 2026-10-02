@@ -17,8 +17,13 @@ def guard() -> Iterator[NetworkGuard]:
 
 @pytest.mark.parametrize(
     ("host", "local"),
-    [("localhost", True), ("127.0.0.1", True), ("::1", True), ("api.github.com", False),
-     ("192.0.2.1", False)],
+    [
+        ("localhost", True),
+        ("127.0.0.1", True),
+        ("::1", True),
+        ("api.github.com", False),
+        ("192.0.2.1", False),
+    ],
 )
 def test_is_local(host: str, local: bool) -> None:
     assert is_local(host) is local
@@ -26,8 +31,12 @@ def test_is_local(host: str, local: bool) -> None:
 
 @pytest.mark.parametrize(
     ("host", "purpose"),
-    [("api.github.com", "Update-Prüfung"), ("huggingface.co", "Modell-Download"),
-     ("cdn-lfs.hf.co", "Modell-Download"), ("example.com", "unbekannt")],
+    [
+        ("api.github.com", "Update-Prüfung"),
+        ("huggingface.co", "Modell-Download"),
+        ("cdn-lfs.hf.co", "Modell-Download"),
+        ("example.com", "unbekannt"),
+    ],
 )
 def test_purpose_of(host: str, purpose: str) -> None:
     assert purpose_of(host) == purpose
