@@ -7,6 +7,7 @@ Ein Signal aus einem anderen Thread wird automatisch in den Haupt-Thread weiterg
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import signal
 import sys
@@ -18,7 +19,7 @@ from pynput import keyboard
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
-from plaudertaste import autostart, paths
+from plaudertaste import autostart, paths, theme
 from plaudertaste.app import App, Status
 from plaudertaste.catalog import AUTO, MODELS, is_model_downloaded, language_display
 from plaudertaste.config import Config, ConfigError, load_config, save_config
@@ -39,11 +40,14 @@ from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
 from plaudertaste.stats import Stats
 from plaudertaste.transcriber import Transcriber
-from plaudertaste.tray import Tray, make_icon
+from plaudertaste.tray import Tray, make_app_icon
 
 log = logging.getLogger(__name__)
 
 TITLE = "Plaudertaste"
+# Eigene Kennung für Windows: Ohne sie ordnet die Taskleiste das Fenster python.exe zu
+# und zeigt dessen Icon.
+APP_USER_MODEL_ID = "Plaudertaste.Plaudertaste"
 
 
 def whisper_language(setting: str) -> str | None:
@@ -85,9 +89,7 @@ class Controller(QObject):
             log_file,
         )
         self.settings_page = SettingsPage()
-        self.window = MainWindow(
-            make_icon(Status.READY), self.settings_page, self._history, self._stats
-        )
+        self.window = MainWindow(make_app_icon(), self.settings_page, self._history, self._stats)
 
         self.tray.quit_requested.connect(self.shutdown)
         self.tray.open_requested.connect(lambda: self.show_window(Page.START))
@@ -330,6 +332,7 @@ class Controller(QObject):
 
         self._refresh_start_page()
         self._load_settings_page()  # zeigt den neuen gespeicherten Stand
+        self.settings_page.show_saved()
 
     def shutdown(self) -> None:
         log.info("Plaudertaste wird beendet.")
@@ -344,8 +347,12 @@ class Controller(QObject):
 
 
 def run(log_file: Path, show_window: bool = True) -> int:
+    if sys.platform == "win32":  # muss vor dem ersten Fenster passieren
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     qapp = QApplication(sys.argv)
     qapp.setApplicationName(TITLE)
+    qapp.setWindowIcon(make_app_icon())
+    theme.apply_theme(qapp)
     qapp.setQuitOnLastWindowClosed(False)  # läuft im Infobereich weiter, wenn das Fenster zu ist
 
     lock = acquire_single_instance_lock(paths.lock_file())

@@ -123,3 +123,52 @@ def test_keys_are_swallowed_while_waiting(qapp: QApplication) -> None:
 
     assert saved == [] and page.hotkey_button.waiting
     page.cancel_capture()
+
+
+def test_buttons_only_active_with_changes() -> None:
+    page = make_page()
+    assert not page.save_button.isEnabled()
+    assert not page.discard_button.isEnabled()
+
+    page.sound_check.setChecked(False)
+    assert page.save_button.isEnabled() and page.discard_button.isEnabled()
+
+    page.sound_check.setChecked(True)  # zurück auf den gespeicherten Stand
+    assert not page.save_button.isEnabled()
+
+
+def test_captured_hotkey_counts_as_change() -> None:
+    page = make_page()
+    page.hotkey_button.click()
+
+    page.set_captured_hotkey("f9")
+
+    assert page.save_button.isEnabled()
+
+
+def test_saved_confirmation_appears_and_fades(qapp: QApplication) -> None:
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    from plaudertaste import settings_page
+
+    page = make_page()
+    page._fade_delay.setInterval(10)  # im Test nicht 2,5 s warten
+    page._fade.setDuration(10)
+
+    page.show_saved()
+    assert not page.saved_label.isHidden()
+
+    loop = QEventLoop()
+    QTimer.singleShot(200, loop.quit)
+    loop.exec()
+    assert page.saved_label.isHidden()
+    assert settings_page.SAVED_TEXT == page.saved_label.text()
+
+
+def test_new_change_hides_old_confirmation() -> None:
+    page = make_page()
+    page.show_saved()
+
+    page.overlay_check.setChecked(False)
+
+    assert page.saved_label.isHidden()

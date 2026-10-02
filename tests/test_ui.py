@@ -1,6 +1,6 @@
 import pytest
 
-from plaudertaste.ui import count_text, format_duration
+from plaudertaste.ui import ToggleSwitch, count_text, format_duration
 
 
 @pytest.mark.parametrize(
@@ -15,3 +15,17 @@ def test_format_duration(seconds: float, text: str) -> None:
 )
 def test_count_text(count: int, text: str) -> None:
     assert count_text(count, "Wort", "Wörter") == text
+
+
+@pytest.mark.usefixtures("qapp")
+def test_toggle_switch_behaves_like_checkbox() -> None:
+    switch = ToggleSwitch("Ton")
+    switch.resize(switch.sizeHint())
+    toggled: list[bool] = []
+    switch.toggled.connect(toggled.append)
+
+    switch.click()
+    switch.click()
+
+    assert toggled == [True, False]
+    assert switch.sizeHint().width() > 38  # Schalter + Text

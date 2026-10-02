@@ -9,6 +9,7 @@ from PySide6.QtCore import QPointF, QRectF, QSignalBlocker, Qt, QUrl, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from plaudertaste import theme
 from plaudertaste.app import Status
 
 STATUS_COLORS: dict[Status, str] = {
@@ -20,7 +21,7 @@ STATUS_COLORS: dict[Status, str] = {
 _ICON_SIZES = (16, 24, 32, 48, 64)
 
 
-def _draw_bubble(status: Status, size: int) -> QPixmap:
+def _draw_bubble(status: Status, size: int, color_override: str | None = None) -> QPixmap:
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     s = size / 64  # alle Maße beziehen sich auf eine 64×64-Vorlage
@@ -34,7 +35,7 @@ def _draw_bubble(status: Status, size: int) -> QPixmap:
     tail.closeSubpath()
     bubble = bubble.united(tail)
 
-    color = QColor(STATUS_COLORS[status])
+    color = QColor(color_override or STATUS_COLORS[status])
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     if status is Status.LOADING:
@@ -59,6 +60,14 @@ def make_icon(status: Status) -> QIcon:
     icon = QIcon()
     for size in _ICON_SIZES:
         icon.addPixmap(_draw_bubble(status, size))
+    return icon
+
+
+def make_app_icon() -> QIcon:
+    """Programm-Icon für Fenster und Taskleiste: die Sprechblase in der Akzentfarbe."""
+    icon = QIcon()
+    for size in (*_ICON_SIZES, 128, 256):
+        icon.addPixmap(_draw_bubble(Status.READY, size, theme.ACCENT))
     return icon
 
 

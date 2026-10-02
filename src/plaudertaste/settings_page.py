@@ -1,18 +1,23 @@
-"""Einstellungs-Seite im Hauptfenster: Änderungen gelten erst mit "Speichern"."""
+"""Einstellungs-Seite im Hauptfenster.
+
+Änderungen gelten erst mit "Speichern". Speichern und Verwerfen sind nur aktiv, wenn sich
+wirklich etwas geändert hat – so sieht man jederzeit, ob noch etwas ungespeichert ist.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -20,11 +25,15 @@ from PySide6.QtWidgets import (
 from plaudertaste.catalog import AUTO, MODELS, format_size, language_options, model_label
 from plaudertaste.config import Config
 from plaudertaste.hotkey import describe_hotkey, hotkey_problem
-from plaudertaste.ui import page_title
+from plaudertaste.ui import ToggleSwitch, card, card_title, hint_label, page_title, set_hint
 
 AUTO_MODEL_LABEL = "Automatisch – large-v3-turbo mit NVIDIA-GPU, sonst small"
 DEFAULT_MICROPHONE_LABEL = "Windows-Standard"
 WAITING_TEXT = "Taste(n) drücken und loslassen …"
+SAVED_TEXT = "✓ Gespeichert"
+SAVED_VISIBLE_MS = 2500
+SAVED_FADE_MS = 600
+LABEL_WIDTH = 210  # gleiche Breite in allen Karten, damit die Felder bündig stehen
 
 
 @dataclass(frozen=True)
@@ -78,57 +87,96 @@ class SettingsPage(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self._config = Config()
-        self._autostart = False
+        self._saved = Settings(Config(), autostart=False)
         self._downloaded: set[str] = set()
 
         self.hotkey_button = HotkeyButton()
         self.hotkey_button.clicked.connect(self._on_hotkey_clicked)
-        self.hotkey_hint = _hint_label()
+        self.hotkey_hint = hint_label()
         self.model_box = QComboBox()
-        self.model_box.currentIndexChanged.connect(self._update_model_hint)
-        self.model_hint = _hint_label()
+        self.model_hint = hint_label()
         self.language_box = QComboBox()
         for code, name in language_options():
             self.language_box.addItem(name, code)
         self.microphone_box = QComboBox()
-        self.sound_check = QCheckBox("Ton bei Start und Ende der Aufnahme")
-        self.overlay_check = QCheckBox("Overlay unten am Bildschirm anzeigen")
-        self.autostart_check = QCheckBox("Mit Windows starten (still im Infobereich)")
+        self.sound_check = ToggleSwitch("Ton bei Start und Ende der Aufnahme")
+        self.overlay_check = ToggleSwitch("Overlay unten am Bildschirm anzeigen")
+        self.autostart_check = ToggleSwitch("Mit Windows starten (still im Infobereich)")
 
-        form = QFormLayout()
-        form.addRow("Hotkey (halten zum Sprechen)", self.hotkey_button)
-        form.addRow("", self.hotkey_hint)
-        form.addRow("Modell", self.model_box)
-        form.addRow("", self.model_hint)
-        form.addRow("Sprache", self.language_box)
-        form.addRow("Mikrofon", self.microphone_box)
+        dictation = _form(
+            ("Hotkey (halten zum Sprechen)", _with_hint(self.hotkey_button, self.hotkey_hint)),
+            ("Sprache", self.language_box),
+        )
+        recognition = _form(
+            ("Modell", _with_hint(self.model_box, self.model_hint)),
+            ("Mikrofon", self.microphone_box),
+        )
+
+        self.saved_label = QLabel(SAVED_TEXT)
+        self.saved_label.setObjectName("success")
+        self._saved_opacity = QGraphicsOpacityEffect(self.saved_label)
+        self.saved_label.setGraphicsEffect(self._saved_opacity)
+        self.saved_label.setVisible(False)
+        self._fade = QPropertyAnimation(self._saved_opacity, b"opacity", self)
+        self._fade.setDuration(SAVED_FADE_MS)
+        self._fade.setStartValue(1.0)
+        self._fade.setEndValue(0.0)
+        self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade.finished.connect(lambda: self.saved_label.setVisible(False))
+        self._fade_delay = QTimer(self, singleShot=True, interval=SAVED_VISIBLE_MS)
+        self._fade_delay.timeout.connect(self._fade.start)
 
         self.discard_button = QPushButton("Verwerfen")
         self.discard_button.clicked.connect(self.reset)
         self.save_button = QPushButton("Speichern")
-        self.save_button.setDefault(True)
+        self.save_button.setObjectName("primary")
         self.save_button.clicked.connect(lambda: self.save_requested.emit(self.settings()))
         buttons = QHBoxLayout()
         buttons.addStretch()
+        buttons.addWidget(self.saved_label)
+        buttons.addSpacing(12)
         buttons.addWidget(self.discard_button)
         buttons.addWidget(self.save_button)
 
+        for box in (self.model_box, self.language_box, self.microphone_box):
+            # nicht so breit wie der längste Eintrag werden – lange Einträge werden gekürzt
+            box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            box.setMinimumContentsLength(20)
+
+        # Nur die Karten scrollen – Speichern/Verwerfen bleiben immer sichtbar.
+        content = QWidget()
+        cards = QVBoxLayout(content)
+        cards.setContentsMargins(0, 0, 8, 0)  # Platz für die Scrollleiste
+        cards.setSpacing(14)
+        cards.addWidget(card(card_title("Diktat"), dictation))
+        cards.addWidget(card(card_title("Erkennung"), recognition))
+        cards.addWidget(
+            card(card_title("Verhalten"), self.sound_check, self.overlay_check, self.autostart_check)
+        )
+        cards.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+
         layout = QVBoxLayout(self)
+        layout.setSpacing(14)
         layout.addWidget(page_title("Einstellungen"))
-        layout.addLayout(form)
-        layout.addSpacing(8)
-        for check in (self.sound_check, self.overlay_check, self.autostart_check):
-            layout.addWidget(check)
-        layout.addStretch()
+        layout.addWidget(scroll, 1)
         layout.addLayout(buttons)
+
+        self.model_box.currentIndexChanged.connect(self._update_model_hint)
+        for box in (self.model_box, self.language_box, self.microphone_box):
+            box.currentIndexChanged.connect(self._on_changed)
+        for switch in (self.sound_check, self.overlay_check, self.autostart_check):
+            switch.toggled.connect(self._on_changed)
+        self._on_changed()
 
     def load(
         self, config: Config, autostart: bool, microphones: list[str], downloaded_models: set[str]
     ) -> None:
         """Zeigt den gespeicherten Stand – mit frischer Mikrofonliste und Download-Status."""
-        self._config = config
-        self._autostart = autostart
+        self._saved = Settings(config, autostart)
         self._downloaded = downloaded_models
 
         self.model_box.blockSignals(True)
@@ -138,6 +186,7 @@ class SettingsPage(QWidget):
             self.model_box.addItem(model_label(info, info.name in downloaded_models), info.name)
         self.model_box.blockSignals(False)
 
+        self.microphone_box.blockSignals(True)
         self.microphone_box.clear()
         self.microphone_box.addItem(DEFAULT_MICROPHONE_LABEL, "")
         for name in microphones:
@@ -145,25 +194,27 @@ class SettingsPage(QWidget):
         if config.microphone and config.microphone not in microphones:
             # gespeichertes Gerät gerade nicht angesteckt – nicht stillschweigend verwerfen
             self.microphone_box.addItem(f"{config.microphone} (nicht verbunden)", config.microphone)
+        self.microphone_box.blockSignals(False)
         self.reset()
 
     def reset(self) -> None:
         """Alle Felder auf den gespeicherten Stand zurücksetzen ("Verwerfen")."""
         self.cancel_capture()
-        config = self._config
+        config = self._saved.config
         self.hotkey_button.show_hotkey(config.hotkey)
-        _set_hint(self.hotkey_hint, "")
+        set_hint(self.hotkey_hint, "")
         _select(self.model_box, config.model)
         _select(self.language_box, config.language)
         _select(self.microphone_box, config.microphone)
         self.sound_check.setChecked(config.sound)
         self.overlay_check.setChecked(config.overlay)
-        self.autostart_check.setChecked(self._autostart)
+        self.autostart_check.setChecked(self._saved.autostart)
         self._update_model_hint()
+        self._on_changed()
 
     def settings(self) -> Settings:
         config = replace(
-            self._config,
+            self._saved.config,
             hotkey=self.hotkey_button.hotkey,
             model=self.model_box.currentData(),
             language=self.language_box.currentData(),
@@ -173,16 +224,24 @@ class SettingsPage(QWidget):
         )
         return Settings(config=config, autostart=self.autostart_check.isChecked())
 
+    def has_changes(self) -> bool:
+        return self.settings() != self._saved
+
+    def show_saved(self) -> None:
+        """Bestätigung nach erfolgreichem Speichern: grün einblenden, dann verblassen."""
+        self._fade.stop()
+        self._saved_opacity.setOpacity(1.0)
+        self.saved_label.setVisible(True)
+        self._fade_delay.start()
+
     def set_captured_hotkey(self, hotkey: str) -> None:
         """Vom Controller aufgerufen, sobald eine Tastenkombination losgelassen wurde."""
         if not self.hotkey_button.waiting:
             return
         problem = hotkey_problem(hotkey)
-        if problem:
-            self.hotkey_button.show_hotkey(self.hotkey_button.hotkey)  # alten behalten
-        else:
-            self.hotkey_button.show_hotkey(hotkey)
-        _set_hint(self.hotkey_hint, problem or "")
+        self.hotkey_button.show_hotkey(self.hotkey_button.hotkey if problem else hotkey)
+        set_hint(self.hotkey_hint, problem or "")
+        self._on_changed()
 
     def cancel_capture(self) -> None:
         """Hotkey-Aufnahme abbrechen, z. B. wenn die Seite gewechselt wird."""
@@ -190,10 +249,19 @@ class SettingsPage(QWidget):
             self.hotkey_button.show_hotkey(self.hotkey_button.hotkey)
             self.capture_cancelled.emit()
 
+    def _on_changed(self) -> None:
+        changed = self.has_changes()
+        self.save_button.setEnabled(changed)
+        self.discard_button.setEnabled(changed)
+        if changed:  # eine alte Bestätigung passt nicht mehr zum aktuellen Stand
+            self._fade_delay.stop()
+            self._fade.stop()
+            self.saved_label.setVisible(False)
+
     def _on_hotkey_clicked(self) -> None:
         if self.hotkey_button.waiting:
             return
-        _set_hint(self.hotkey_hint, "")
+        set_hint(self.hotkey_hint, "")
         self.hotkey_button.start_waiting()
         self.capture_requested.emit()
 
@@ -203,20 +271,28 @@ class SettingsPage(QWidget):
         text = ""
         if info is not None and name not in self._downloaded:
             text = f"Wird beim Speichern heruntergeladen ({format_size(info.size_mb)})."
-        _set_hint(self.model_hint, text)
+        set_hint(self.model_hint, text)
 
 
-def _hint_label() -> QLabel:
-    label = QLabel()
-    label.setWordWrap(True)
-    label.setStyleSheet("color: #b26a00;")  # dunkles Orange: Hinweis, kein Fehler
-    label.setVisible(False)
-    return label
+def _with_hint(field: QWidget, hint: QLabel) -> QWidget:
+    """Feld mit Hinweis direkt darunter – ohne leere Zeile, solange der Hinweis leer ist."""
+    box = QWidget()
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(4)
+    layout.addWidget(field)
+    layout.addWidget(hint)
+    return box
 
 
-def _set_hint(label: QLabel, text: str) -> None:
-    label.setText(text)
-    label.setVisible(bool(text))
+def _form(*rows: tuple[str, QWidget]) -> QFormLayout:
+    form = QFormLayout()
+    form.setVerticalSpacing(10)
+    for text, field in rows:
+        label = QLabel(text)
+        label.setFixedWidth(LABEL_WIDTH)
+        form.addRow(label, field)
+    return form
 
 
 def _select(box: QComboBox, value: str) -> None:

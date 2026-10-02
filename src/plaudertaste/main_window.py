@@ -11,7 +11,6 @@ from enum import IntEnum
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCloseEvent, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -25,12 +24,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from plaudertaste import __version__
 from plaudertaste.app import Status
 from plaudertaste.history import Entry, History
 from plaudertaste.settings_page import SettingsPage
 from plaudertaste.stats import TYPING_WPM, Stats, Totals
 from plaudertaste.tray import STATUS_COLORS
-from plaudertaste.ui import count_text, format_duration, muted_label, page_title
+from plaudertaste.ui import card, card_title, format_duration, format_number, muted_label, page_title
 
 
 class Page(IntEnum):
@@ -48,47 +48,58 @@ _PAGE_NAMES = {
 }
 
 
+def _big_number(text: str = "") -> QLabel:
+    label = QLabel(text)
+    label.setObjectName("bigNumber")
+    return label
+
+
 class StartPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.status_dot = QLabel("●")
         self.status_text = QLabel()
-        status_font = self.status_text.font()
-        status_font.setPointSize(20)
-        status_font.setBold(True)
-        self.status_text.setFont(status_font)
-        self.status_dot.setFont(status_font)
+        self.status_text.setObjectName("pageTitle")
+        self.status_dot.setObjectName("pageTitle")
         status_row = QHBoxLayout()
+        status_row.setSpacing(10)
         status_row.addWidget(self.status_dot)
         status_row.addWidget(self.status_text)
         status_row.addStretch()
-
         self.instructions = QLabel()
         self.instructions.setWordWrap(True)
+
+        self.words_value = _big_number()
+        self.dictations_value = _big_number()
+        self.saved_value = _big_number()
+        tiles = QHBoxLayout()
+        tiles.setSpacing(14)
+        for title, value in (
+            ("Wörter heute", self.words_value),
+            ("Diktate heute", self.dictations_value),
+            ("Heute gespart (ca.)", self.saved_value),
+        ):
+            tiles.addWidget(card(muted_label(title), value, spacing=4))
+
         self.model_label = QLabel()
         self.language_label = QLabel()
         self.microphone_label = QLabel()
-        self.today_label = QLabel()
-
         details = QGridLayout()
+        details.setHorizontalSpacing(24)
+        details.setVerticalSpacing(8)
         for row, (name, value) in enumerate(
-            [
-                ("Modell", self.model_label),
-                ("Sprache", self.language_label),
-                ("Mikrofon", self.microphone_label),
-                ("Heute", self.today_label),
-            ]
+            [("Modell", self.model_label), ("Sprache", self.language_label),
+             ("Mikrofon", self.microphone_label)]
         ):
             details.addWidget(muted_label(name), row, 0)
             details.addWidget(value, row, 1)
         details.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(self)
-        layout.addLayout(status_row)
-        layout.addSpacing(4)
-        layout.addWidget(self.instructions)
-        layout.addSpacing(16)
-        layout.addLayout(details)
+        layout.setSpacing(14)
+        layout.addWidget(card(status_row, self.instructions))
+        layout.addLayout(tiles)
+        layout.addWidget(card(card_title("Aktuelle Einstellungen"), details))
         layout.addStretch()
         layout.addWidget(
             muted_label("100 % lokal: Deine Sprache und dein Text verlassen nie diesen Rechner.")
@@ -108,11 +119,9 @@ class StartPage(QWidget):
         self.microphone_label.setText(microphone)
 
     def set_today(self, totals: Totals) -> None:
-        self.today_label.setText(
-            f"{count_text(totals.words, 'Wort', 'Wörter')} in "
-            f"{count_text(totals.dictations, 'Diktat', 'Diktaten')} · "
-            f"ca. {format_duration(totals.saved_seconds)} gespart"
-        )
+        self.words_value.setText(format_number(totals.words))
+        self.dictations_value.setText(format_number(totals.dictations))
+        self.saved_value.setText(format_duration(totals.saved_seconds))
 
 
 class HistoryPage(QWidget):
@@ -122,15 +131,19 @@ class HistoryPage(QWidget):
         self._copy = copy
 
         self._list = QVBoxLayout()
+        self._list.setSpacing(10)
+        self._list.setContentsMargins(0, 0, 6, 0)  # Platz für die Scrollleiste
         self._list.addStretch()
         container = QWidget()
         container.setLayout(self._list)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(container)
 
-        self.empty_label = muted_label("Noch keine Diktate seit dem Start.")
+        self.empty_label = muted_label(
+            "Noch keine Diktate seit dem Start. Halte deinen Hotkey gedrückt und sprich – "
+            "hier erscheint dann jedes Diktat zum erneuten Kopieren."
+        )
         self.clear_button = QPushButton("Verlauf leeren")
         self.clear_button.clicked.connect(self._clear)
         footer = QHBoxLayout()
@@ -140,6 +153,7 @@ class HistoryPage(QWidget):
         footer.addWidget(self.clear_button)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(14)
         layout.addWidget(page_title("Verlauf"))
         layout.addWidget(self.empty_label)
         layout.addWidget(scroll, 1)
@@ -157,8 +171,6 @@ class HistoryPage(QWidget):
         self.clear_button.setEnabled(bool(entries))
 
     def _entry_widget(self, entry: Entry) -> QWidget:
-        frame = QFrame()
-        frame.setFrameShape(QFrame.Shape.StyledPanel)
         text = QLabel(entry.text)
         text.setWordWrap(True)
         text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -168,10 +180,7 @@ class HistoryPage(QWidget):
         header.addWidget(muted_label(f"{entry.time:%H:%M} · {format_duration(entry.seconds)}"))
         header.addStretch()
         header.addWidget(copy_button)
-        layout = QVBoxLayout(frame)
-        layout.addLayout(header)
-        layout.addWidget(text)
-        return frame
+        return card(header, text, spacing=6)
 
     def _clear(self) -> None:
         self._history.clear()
@@ -179,25 +188,28 @@ class HistoryPage(QWidget):
 
 
 class StatsPage(QWidget):
-    _ROWS = ("Wörter", "Diktate", "Sprechzeit", "Gespart (ca.)")
-    _COLUMNS = ("Heute", "Diese Woche", "Insgesamt")
+    COLUMNS = ("Heute", "Diese Woche", "Insgesamt")
 
     def __init__(self, stats: Stats) -> None:
         super().__init__()
         self._stats = stats
-        grid = QGridLayout()
-        self._cells: dict[tuple[int, int], QLabel] = {}
-        for column, name in enumerate(self._COLUMNS, start=1):
-            header = QLabel(f"<b>{name}</b>")
-            grid.addWidget(header, 0, column, alignment=Qt.AlignmentFlag.AlignRight)
-        for row, name in enumerate(self._ROWS, start=1):
-            grid.addWidget(muted_label(name), row, 0)
-            for column in range(1, len(self._COLUMNS) + 1):
-                cell = QLabel()
-                cell.setAlignment(Qt.AlignmentFlag.AlignRight)
-                grid.addWidget(cell, row, column)
-                self._cells[(row, column)] = cell
-        grid.setHorizontalSpacing(32)
+        # Pro Spalte: große Wortzahl plus drei Detailzeilen
+        self._words: list[QLabel] = []
+        self._details: list[dict[str, QLabel]] = []
+        columns = QHBoxLayout()
+        columns.setSpacing(14)
+        for title in self.COLUMNS:
+            words = _big_number()
+            details = {name: QLabel() for name in ("Diktate", "Sprechzeit", "Gespart (ca.)")}
+            grid = QGridLayout()
+            grid.setVerticalSpacing(6)
+            for row, (name, value) in enumerate(details.items()):
+                value.setAlignment(Qt.AlignmentFlag.AlignRight)
+                grid.addWidget(muted_label(name), row, 0)
+                grid.addWidget(value, row, 1)
+            columns.addWidget(card(card_title(title), words, muted_label("Wörter"), grid, spacing=6))
+            self._words.append(words)
+            self._details.append(details)
 
         self.reset_button = QPushButton("Statistik zurücksetzen")
         self.reset_button.clicked.connect(self._reset)
@@ -206,9 +218,9 @@ class StatsPage(QWidget):
         footer.addWidget(self.reset_button)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(14)
         layout.addWidget(page_title("Statistik"))
-        layout.addLayout(grid)
-        layout.addSpacing(16)
+        layout.addLayout(columns)
         layout.addWidget(
             muted_label(
                 f"Gesparte Zeit ist eine Schätzung: Tippen mit {TYPING_WPM} Wörtern pro Minute "
@@ -218,21 +230,21 @@ class StatsPage(QWidget):
         layout.addStretch()
         layout.addLayout(footer)
 
-    def cell(self, row: int, column: int) -> QLabel:
-        return self._cells[(row, column)]
+    def words(self, column: int) -> str:
+        return self._words[column].text()
+
+    def detail(self, column: int, name: str) -> str:
+        return self._details[column][name].text()
 
     def refresh(self) -> None:
         for column, totals in enumerate(
-            (self._stats.today(), self._stats.this_week(), self._stats.total()), start=1
+            (self._stats.today(), self._stats.this_week(), self._stats.total())
         ):
-            values = (
-                f"{totals.words:,}".replace(",", "."),  # Tausenderpunkt
-                str(totals.dictations),
-                format_duration(totals.seconds),
-                format_duration(totals.saved_seconds),
-            )
-            for row, value in enumerate(values, start=1):
-                self.cell(row, column).setText(value)
+            self._words[column].setText(format_number(totals.words))
+            details = self._details[column]
+            details["Diktate"].setText(format_number(totals.dictations))
+            details["Sprechzeit"].setText(format_duration(totals.seconds))
+            details["Gespart (ca.)"].setText(format_duration(totals.saved_seconds))
 
     def _reset(self) -> None:
         answer = QMessageBox.question(
@@ -252,7 +264,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Plaudertaste")
         self.setWindowIcon(icon)
-        self.resize(820, 520)
+        self.resize(900, 640)
+        self.setMinimumSize(760, 520)
 
         self.start_page = StartPage()
         self.history_page = HistoryPage(history, QGuiApplication.clipboard().setText)
@@ -260,27 +273,52 @@ class MainWindow(QMainWindow):
         self.settings_page = settings_page
 
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(170)
-        self.sidebar.setFrameShape(QFrame.Shape.NoFrame)
-        self.sidebar.setStyleSheet(
-            "QListWidget { font-size: 11pt; padding-top: 8px; }"
-            "QListWidget::item { padding: 10px 14px; border-radius: 6px; }"
-        )
+        self.sidebar.setObjectName("nav")
         self.pages = QStackedWidget()
         for page, widget in zip(
             Page, (self.start_page, self.history_page, self.stats_page, self.settings_page)
         ):
             self.sidebar.addItem(_PAGE_NAMES[page])
-            self.pages.addWidget(_padded(widget))
+            # Verlauf und Einstellungen scrollen selbst (mit fester Fußleiste); Start und
+            # Statistik scrollen als Ganzes, statt bei kleinem Fenster gequetscht zu werden.
+            scrollable = page in (Page.START, Page.STATS)
+            self.pages.addWidget(_padded(widget, scrollable))
         self.sidebar.currentRowChanged.connect(self._on_page_changed)
 
         central = QWidget()
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.sidebar)
+        layout.setSpacing(0)
+        layout.addWidget(self._build_sidebar(icon))
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(central)
         self.sidebar.setCurrentRow(Page.START)
+
+    def _build_sidebar(self, icon: QIcon) -> QWidget:
+        logo = QLabel()
+        logo.setPixmap(icon.pixmap(28, 28))
+        name = QLabel("Plaudertaste")
+        name.setObjectName("appName")
+        brand = QHBoxLayout()
+        brand.setContentsMargins(20, 20, 20, 16)
+        brand.setSpacing(10)
+        brand.addWidget(logo)
+        brand.addWidget(name)
+        brand.addStretch()
+
+        version = muted_label(f"Version {__version__}")
+        version.setContentsMargins(24, 0, 0, 16)
+
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+        sidebar.setFixedWidth(200)
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(brand)
+        layout.addWidget(self.sidebar, 1)
+        layout.addWidget(version)
+        return sidebar
 
     def show_page(self, page: Page) -> None:
         self.sidebar.setCurrentRow(page)
@@ -309,9 +347,15 @@ class MainWindow(QMainWindow):
         self.hidden_to_tray.emit()
 
 
-def _padded(widget: QWidget) -> QWidget:
+def _padded(widget: QWidget, scrollable: bool) -> QWidget:
     wrapper = QWidget()
     layout = QVBoxLayout(wrapper)
-    layout.setContentsMargins(24, 20, 24, 20)
+    layout.setContentsMargins(28, 24, 28, 20)
     layout.addWidget(widget)
-    return wrapper
+    if not scrollable:
+        return wrapper
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setWidget(wrapper)
+    return scroll

@@ -117,8 +117,9 @@ def test_dictation_updates_history_stats_and_start_page(controller: gui.Controll
 
     assert [e.text for e in controller._history.entries()] == ["Hallo liebe Welt"]
     assert controller._stats.today().words == 3
-    assert controller.window.start_page.today_label.text().startswith("3 Wörter in 1 Diktat ·")
-    assert controller.window.stats_page.cell(1, 1).text() == "3"  # Wörter heute
+    assert controller.window.start_page.words_value.text() == "3"
+    assert controller.window.start_page.dictations_value.text() == "1"
+    assert controller.window.stats_page.words(0) == "3"  # Spalte "Heute"
 
 
 def test_closing_window_hides_it_and_hints_once(
@@ -144,3 +145,15 @@ def test_settings_page_shows_saved_values_when_opened(controller: gui.Controller
     assert controller.window.current_page() is Page.SETTINGS
     assert controller.settings_page.settings().config.model == "small"
     assert "✓ heruntergeladen" in controller.settings_page.model_box.currentText()
+
+
+def test_saving_shows_confirmation(controller: gui.Controller) -> None:
+    controller.show_window(Page.SETTINGS)
+    page = controller.settings_page
+    page.sound_check.setChecked(False)
+    assert page.save_button.isEnabled()
+
+    page.save_button.click()
+
+    assert not page.saved_label.isHidden()
+    assert not page.save_button.isEnabled()  # gespeichert = nichts mehr offen
