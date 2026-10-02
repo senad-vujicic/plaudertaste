@@ -1,98 +1,129 @@
-"""Dunkles Design mit violettem Akzent – alle Farben an einer Stelle.
+"""Dunkles Schiefer-Design mit Mint, Pink und Lavendel – alle Farben an einer Stelle.
 
 Basis ist Qts Stil "Fusion": Der Windows-Stil ignoriert viele Stylesheet-Angaben.
+Schrift ist Poppins (SIL Open Font License), mitgeliefert in assets/fonts.
 """
 
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QFont, QPalette
+from pathlib import Path
+
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
-BACKGROUND = "#16161a"
-SIDEBAR = "#1c1c22"
-SURFACE = "#212129"  # Karten, Eingabefelder
-SURFACE_HOVER = "#2a2a34"
-BORDER = "#2f2f3a"
-TEXT = "#ececf1"
-MUTED = "#9a9aab"
-ACCENT = "#7c5cff"
-ACCENT_HOVER = "#8f74ff"
-ACCENT_PRESSED = "#6a4ae6"
-ACCENT_SOFT = "#2b2545"  # Auswahl-Hintergrund in der Seitenleiste
-SUCCESS = "#22c55e"
-HINT = "#f0a63a"
-SWITCH_OFF = "#3a3a46"
+ASSET_DIR = Path(__file__).parent / "assets"
+FONT_DIR = ASSET_DIR / "fonts"
+FONT_FAMILY = "Poppins"
+FALLBACK_FONT = "Segoe UI"  # falls die mitgelieferte Schrift nicht geladen werden kann
 
-# Statusfarben – Tray-Icon, Overlay und Startseite nutzen dieselben
-STATUS_GREY = "#8e959e"  # lädt / bereit
-STATUS_RED = "#e53935"  # Aufnahme
-STATUS_YELLOW = "#f9a825"  # Verarbeitung
+BACKGROUND = "#283037"  # Schiefergrau-Blau
+SIDEBAR = "#22313e"
+SURFACE = "#2f3840"  # Karten
+SURFACE_HOVER = "#38434c"  # Knöpfe
+INPUT = "#252d33"  # Eingabefelder und Listen – etwas tiefer als die Karte
+BORDER = "#3a4550"
+TEXT = "#eef1f4"
+MUTED = "#8d99a6"
+DISABLED = "#66727c"
+
+HIGHLIGHT = "#f4f6f8"  # die eine helle Karte und die gewählte Seite in der Seitenleiste
+INK = "#1d252b"  # dunkle Schrift auf Hell und auf Mint
+INK_MUTED = "#5b6670"
+
+ACCENT = "#6ee7c3"  # Mint
+ACCENT_HOVER = "#8ff0d3"
+ACCENT_PRESSED = "#4fd1ab"
+ACCENT_DEEP = "#3fae8f"  # Seitenwand der Tasten im Logo
+ACCENT_SOFT = "#30504a"  # Auswahl in Listen
+PINK = "#ef476f"
+LAVENDER = "#c6c1f2"
+HINT = "#f5b54a"
+SWITCH_OFF = "#46525c"
+
+# Statusfarben – Tray-Symbol, Overlay und Startseite nutzen dieselben
+STATUS_LOADING = MUTED
+STATUS_READY = ACCENT
+STATUS_RECORDING = PINK
+STATUS_PROCESSING = LAVENDER
 
 STYLESHEET = f"""
 QWidget {{
     color: {TEXT};
-    font-size: 10pt;
+    font-family: "{FONT_FAMILY}", "{FALLBACK_FONT}";
+    font-size: 9.5pt;
 }}
 QMainWindow, QDialog, QMessageBox {{ background: {BACKGROUND}; }}
 
 QLabel#muted {{ color: {MUTED}; }}
 QLabel#hint {{ color: {HINT}; }}
-QLabel#success {{ color: {SUCCESS}; font-weight: 600; }}
-QLabel#pageTitle {{ font-size: 20pt; font-weight: 600; }}
-QLabel#cardTitle {{ font-size: 11pt; font-weight: 600; }}
+QLabel#success {{ color: {ACCENT}; font-weight: 600; }}
+QLabel#pageTitle {{ font-size: 18pt; font-weight: 600; }}
+QLabel#cardTitle {{ font-size: 10.5pt; font-weight: 500; }}
 QLabel#bigNumber {{ font-size: 22pt; font-weight: 600; }}
-QLabel#appName {{ font-size: 13pt; font-weight: 600; }}
+QLabel#appName {{ font-size: 12pt; font-weight: 600; }}
 
 QFrame#card {{
     background: {SURFACE};
-    border: 1px solid {BORDER};
-    border-radius: 12px;
+    border: none;
+    border-radius: 16px;
 }}
+QFrame#heroCard {{
+    background: {HIGHLIGHT};
+    border: none;
+    border-radius: 16px;
+}}
+QFrame#heroCard QLabel {{ color: {INK}; }}
+QFrame#heroCard QLabel#muted {{ color: {INK_MUTED}; }}
 QFrame#problemCard {{
-    background: #2a2216;
-    border: 1px solid #6b4e1f;
-    border-radius: 12px;
+    background: #3a3427;
+    border: 1px solid #6b5628;
+    border-radius: 16px;
 }}
-QWidget#sidebar {{ background: {SIDEBAR}; border-right: 1px solid {BORDER}; }}
+QWidget#sidebar {{ background: {SIDEBAR}; }}
 
 QListWidget#nav {{ background: transparent; border: none; outline: 0; }}
 QListWidget#nav::item {{
-    padding: 10px 14px;
-    margin: 2px 10px;
-    border-radius: 8px;
+    padding: 9px 12px;
+    margin: 3px 14px;
+    border-radius: 10px;
     color: {MUTED};
 }}
-QListWidget#nav::item:hover {{ background: {SURFACE_HOVER}; color: {TEXT}; }}
-QListWidget#nav::item:selected {{ background: {ACCENT_SOFT}; color: {TEXT}; }}
+QListWidget#nav::item:hover {{ background: {SURFACE}; color: {TEXT}; }}
+QListWidget#nav::item:selected {{ background: {HIGHLIGHT}; color: {INK}; }}
 
 QPushButton {{
     background: {SURFACE_HOVER};
-    border: 1px solid {BORDER};
-    border-radius: 8px;
-    padding: 7px 16px;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 18px;
     min-height: 20px;
 }}
-QPushButton:hover {{ background: #33333f; }}
-QPushButton:pressed {{ background: #2a2a34; }}
-QPushButton:disabled {{ color: #5c5c6b; background: {SURFACE}; }}
+QPushButton:hover {{ background: #424e58; }}
+QPushButton:pressed {{ background: #333d46; }}
+QPushButton:disabled {{ color: {DISABLED}; background: {SURFACE}; }}
 QPushButton#primary {{
     background: {ACCENT};
-    border: 1px solid {ACCENT};
-    color: white;
+    color: {INK};
     font-weight: 600;
 }}
 QPushButton#primary:hover {{ background: {ACCENT_HOVER}; }}
 QPushButton#primary:pressed {{ background: {ACCENT_PRESSED}; }}
-QPushButton#primary:disabled {{ background: #3a3550; border-color: #3a3550; color: #8d86a8; }}
+QPushButton#primary:disabled {{ background: #3b524d; color: #7d978f; }}
 
 QComboBox {{
-    background: {BACKGROUND};
+    background: {INPUT};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 7px 10px;
     min-height: 20px;
 }}
 QComboBox:hover, QComboBox:focus {{ border-color: {ACCENT}; }}
+QComboBox::drop-down {{ border: none; background: transparent; width: 28px; }}
+QComboBox::down-arrow {{
+    image: url("{(ASSET_DIR / "chevron-down.svg").as_posix()}");
+    width: 12px;
+    height: 12px;
+}}
 QComboBox QAbstractItemView {{
     background: {SURFACE};
     border: 1px solid {BORDER};
@@ -100,19 +131,19 @@ QComboBox QAbstractItemView {{
     outline: 0;
 }}
 
-QLineEdit {{
-    background: {BACKGROUND};
+QLineEdit, QPlainTextEdit {{
+    background: {INPUT};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 7px 10px;
     min-height: 20px;
 }}
-QLineEdit:focus {{ border-color: {ACCENT}; }}
+QLineEdit:focus, QPlainTextEdit:focus {{ border-color: {ACCENT}; }}
 
 QListWidget#entries, QTableWidget {{
-    background: {BACKGROUND};
+    background: {INPUT};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 4px;
     outline: 0;
 }}
@@ -122,22 +153,22 @@ QListWidget#entries::item:selected, QTableWidget::item:selected {{
     color: {TEXT};
 }}
 QHeaderView::section {{
-    background: {SURFACE};
+    background: {INPUT};
     color: {MUTED};
     border: none;
     padding: 6px 8px;
 }}
-QTableCornerButton::section {{ background: {SURFACE}; border: none; }}
+QTableCornerButton::section {{ background: {INPUT}; border: none; }}
 
 QProgressBar {{
-    background: {BACKGROUND};
-    border: 1px solid {BORDER};
+    background: {INPUT};
+    border: none;
     border-radius: 5px;
     max-height: 10px;
     text-align: center;
     color: transparent;
 }}
-QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
+QProgressBar::chunk {{ background: {ACCENT}; border-radius: 5px; }}
 
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
@@ -148,7 +179,7 @@ QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 QMenu {{
     background: {SURFACE};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 4px;
 }}
 QMenu::item {{ padding: 6px 24px 6px 12px; border-radius: 6px; }}
@@ -160,26 +191,40 @@ QToolTip {{ background: {SURFACE}; color: {TEXT}; border: 1px solid {BORDER}; pa
 """
 
 
+def load_fonts() -> bool:
+    """Registriert die mitgelieferte Schrift bei Qt. False, wenn keine Datei ladbar war."""
+    loaded = [QFontDatabase.addApplicationFont(str(path)) for path in FONT_DIR.glob("*.ttf")]
+    return any(font_id != -1 for font_id in loaded)
+
+
+def ui_font(point_size: float) -> QFont:
+    """Poppins in der gewünschten Größe – mit Windows-Schrift als Rückfallebene."""
+    font = QFont([FONT_FAMILY, FALLBACK_FONT])
+    font.setPointSizeF(point_size)
+    return font
+
+
 def apply_theme(app: QApplication) -> None:
+    load_fonts()
     app.setStyle("Fusion")
     palette = QPalette()
     for role, color in (
         (QPalette.ColorRole.Window, BACKGROUND),
-        (QPalette.ColorRole.Base, SURFACE),
-        (QPalette.ColorRole.AlternateBase, SURFACE_HOVER),
+        (QPalette.ColorRole.Base, INPUT),
+        (QPalette.ColorRole.AlternateBase, SURFACE),
         (QPalette.ColorRole.Text, TEXT),
         (QPalette.ColorRole.WindowText, TEXT),
         (QPalette.ColorRole.ButtonText, TEXT),
         (QPalette.ColorRole.Button, SURFACE_HOVER),
         (QPalette.ColorRole.Highlight, ACCENT),
-        (QPalette.ColorRole.HighlightedText, "#ffffff"),
+        (QPalette.ColorRole.HighlightedText, INK),
         (QPalette.ColorRole.PlaceholderText, MUTED),
         (QPalette.ColorRole.ToolTipBase, SURFACE),
         (QPalette.ColorRole.ToolTipText, TEXT),
     ):
         palette.setColor(role, QColor(color))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#5c5c6b"))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor("#5c5c6b"))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(DISABLED))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(DISABLED))
     app.setPalette(palette)
-    app.setFont(QFont("Segoe UI", 10))
+    app.setFont(ui_font(9.5))
     app.setStyleSheet(STYLESHEET)

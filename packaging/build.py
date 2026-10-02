@@ -18,8 +18,8 @@ from PySide6.QtCore import QBuffer, QIODevice, QSize
 from PySide6.QtGui import QGuiApplication
 
 from plaudertaste import __version__
+from plaudertaste.icons import make_app_icon
 from plaudertaste.models import MODELS
-from plaudertaste.tray import make_app_icon
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_DIR = ROOT / "build"

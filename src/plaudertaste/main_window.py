@@ -1,4 +1,4 @@
-"""Hauptfenster mit Seitenleiste: Start, Verlauf, Statistik, Einstellungen.
+"""Hauptfenster mit Seitenleiste: Start, Verlauf, Statistik, Wörterbuch, Einstellungen.
 
 Das Schließen-Kreuz versteckt das Fenster nur – Plaudertaste läuft im Infobereich weiter.
 """
@@ -8,13 +8,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from enum import IntEnum
 
-from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtCore import QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -26,12 +27,14 @@ from PySide6.QtWidgets import (
 
 from plaudertaste import __version__
 from plaudertaste.app import Status
+from plaudertaste.charts import AreaChart
 from plaudertaste.dictionary_page import DictionaryPage
 from plaudertaste.history import Entry, History
+from plaudertaste.icons import STATUS_COLORS, nav_icon
 from plaudertaste.settings_page import SettingsPage
 from plaudertaste.stats import TYPING_WPM, Stats, Totals
-from plaudertaste.tray import STATUS_COLORS
 from plaudertaste.ui import (
+    KeyCaps,
     card,
     card_title,
     format_duration,
@@ -57,6 +60,14 @@ _PAGE_NAMES = {
     Page.DICTIONARY: "Wörterbuch",
     Page.SETTINGS: "Einstellungen",
 }
+_PAGE_ICONS = {
+    Page.START: "start",
+    Page.HISTORY: "history",
+    Page.STATS: "stats",
+    Page.DICTIONARY: "dictionary",
+    Page.SETTINGS: "settings",
+}
+CHART_DAYS = 14
 
 
 def _big_number(text: str = "") -> QLabel:
@@ -78,8 +89,19 @@ class StartPage(QWidget):
         status_row.addWidget(self.status_dot)
         status_row.addWidget(self.status_text)
         status_row.addStretch()
-        self.instructions = QLabel()
-        self.instructions.setWordWrap(True)
+        self.instructions = muted_label()
+        self.keycaps = KeyCaps()  # der eigene Hotkey als Tasten
+        status_column = QVBoxLayout()
+        status_column.setSpacing(6)
+        status_column.addLayout(status_row)
+        status_column.addWidget(self.instructions)
+        hero_row = QHBoxLayout()
+        hero_row.setSpacing(24)
+        hero_row.addLayout(status_column, 1)
+        hero_row.addWidget(self.keycaps, 0, Qt.AlignmentFlag.AlignVCenter)
+        # Die eine helle Karte: Status und Hotkey sollen sofort ins Auge springen.
+        self.hero_card = card(hero_row)
+        self.hero_card.setObjectName("heroCard")
 
         self.words_value = _big_number()
         self.dictations_value = _big_number()
@@ -145,7 +167,7 @@ class StartPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
-        layout.addWidget(card(status_row, self.instructions))
+        layout.addWidget(self.hero_card)
         layout.addWidget(self.problems_card)
         layout.addWidget(self.update_card)
         layout.addLayout(tiles)
@@ -165,6 +187,7 @@ class StartPage(QWidget):
             f"Halte <b>{hotkey}</b> gedrückt und sprich. Beim Loslassen erscheint der Text "
             "dort, wo dein Cursor steht – in jedem Programm."
         )
+        self.keycaps.set_keys(hotkey)
         self.model_label.setText(model)
         self.language_label.setText(language)
         self.microphone_label.setText(microphone)
@@ -293,8 +316,15 @@ class StatsPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
+        self.chart = AreaChart(f"Noch keine Diktate in den letzten {CHART_DAYS} Tagen.")
+        chart_header = QHBoxLayout()
+        chart_header.addWidget(card_title("Wörter pro Tag"))
+        chart_header.addStretch()
+        chart_header.addWidget(muted_label(f"letzte {CHART_DAYS} Tage"))
+
         layout.addWidget(page_title("Statistik"))
         layout.addLayout(columns)
+        layout.addWidget(card(chart_header, self.chart))
         layout.addWidget(
             muted_label(
                 f"Gesparte Zeit ist eine Schätzung: Tippen mit {TYPING_WPM} Wörtern pro Minute "
@@ -316,6 +346,10 @@ class StatsPage(QWidget):
             details["Diktate"].setText(format_number(totals.dictations))
             details["Sprechzeit"].setText(format_duration(totals.seconds))
             details["Gespart (ca.)"].setText(format_duration(totals.saved_seconds))
+        days = self._stats.daily(CHART_DAYS)
+        self.chart.set_data(
+            [f"{day.day}.{day.month}." for day, _ in days], [totals.words for _, totals in days]
+        )
 
     def _reset(self) -> None:
         answer = QMessageBox.question(
@@ -385,6 +419,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("nav")
+        self.sidebar.setIconSize(QSize(18, 18))
         self.pages = QStackedWidget()
         for page, widget in zip(
             Page,
@@ -397,7 +432,7 @@ class MainWindow(QMainWindow):
             ),
             strict=True,  # gleich viele Seiten und Einträge – sonst sofort ein Fehler
         ):
-            self.sidebar.addItem(_PAGE_NAMES[page])
+            self.sidebar.addItem(QListWidgetItem(nav_icon(_PAGE_ICONS[page]), _PAGE_NAMES[page]))
             # Verlauf, Wörterbuch, Einstellungen scrollen selbst (feste Kopf-/Fußzeile); Start und
             # Statistik scrollen als Ganzes, statt bei kleinem Fenster gequetscht zu werden.
             scrollable = page in (Page.START, Page.STATS)
@@ -419,11 +454,11 @@ class MainWindow(QMainWindow):
 
     def _build_sidebar(self, icon: QIcon) -> QWidget:
         logo = QLabel()
-        logo.setPixmap(icon.pixmap(28, 28))
+        logo.setPixmap(icon.pixmap(36, 36))
         name = QLabel("Plaudertaste")
         name.setObjectName("appName")
         brand = QHBoxLayout()
-        brand.setContentsMargins(20, 20, 20, 16)
+        brand.setContentsMargins(20, 22, 20, 20)
         brand.setSpacing(10)
         brand.addWidget(logo)
         brand.addWidget(name)
@@ -435,7 +470,7 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
         sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
-        sidebar.setFixedWidth(200)
+        sidebar.setFixedWidth(214)
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(brand)

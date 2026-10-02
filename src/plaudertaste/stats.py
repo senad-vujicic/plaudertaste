@@ -61,6 +61,14 @@ class Stats:
     def total(self) -> Totals:
         return sum(self._days.values(), Totals())
 
+    def daily(self, days: int) -> list[tuple[date, Totals]]:
+        """Die letzten `days` Tage bis heute, älteste zuerst – Tage ohne Diktat mit 0."""
+        today = self._today()
+        return [
+            (day, self._days.get(day, Totals()))
+            for day in (today - timedelta(days=offset) for offset in range(days - 1, -1, -1))
+        ]
+
     def reset(self) -> None:
         self._days = {}
         self._save()

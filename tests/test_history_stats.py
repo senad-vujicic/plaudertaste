@@ -79,3 +79,21 @@ def test_broken_file_is_kept_and_stats_start_fresh(tmp_path: Path) -> None:
 
     assert stats.total() == Totals()
     assert (tmp_path / "stats.defekt.json").read_text(encoding="utf-8") == "{kaputt"
+
+
+def test_daily_fills_gaps_with_zero_oldest_first(tmp_path: Path) -> None:
+    clock = Clock(date(2026, 9, 30))
+    stats = Stats(tmp_path / "stats.json", today=clock)
+    stats.record("eins zwei", 1.0)
+    clock.day = date(2026, 10, 2)
+    stats.record("drei", 0.5)
+
+    days = stats.daily(4)
+
+    assert [day for day, _ in days] == [
+        date(2026, 9, 29),
+        date(2026, 9, 30),
+        date(2026, 10, 1),
+        date(2026, 10, 2),
+    ]
+    assert [totals.words for _, totals in days] == [0, 2, 0, 1]

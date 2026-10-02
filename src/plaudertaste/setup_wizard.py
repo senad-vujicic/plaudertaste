@@ -96,6 +96,9 @@ class SetupWizard(QDialog):
             ),
             muted_label("Die Einrichtung dauert etwa eine Minute."),
         )
+        logo = QLabel()
+        logo.setPixmap(icon.pixmap(72, 72))
+        welcome.layout().insertWidget(0, logo)
 
         # --- 2. Mikrofon ---
         self.microphone_box = QComboBox()

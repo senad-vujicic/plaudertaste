@@ -23,6 +23,7 @@ ICON = ROOT / "build" / "plaudertaste.ico"  # erzeugt build.py
 # die Whisper-Engine (DLLs) und das Sprach-Erkennungsmodell (VAD) selbst einsammeln.
 binaries = collect_dynamic_libs("ctranslate2")
 datas = collect_data_files("faster_whisper")
+datas += collect_data_files("plaudertaste")  # Schrift (Poppins) und Symbol-Dateien
 
 # GPU: cuBLAS und NVRTC (lädt cublasLt zur Laufzeit nach). Die Ordnerstruktur
 # nvidia/<paket>/bin bleibt erhalten – dort sucht transcriber.register_nvidia_dlls.

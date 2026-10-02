@@ -1,5 +1,5 @@
 """Overlay unten am Bildschirm: Pegel und Zeit während der Aufnahme, Punkte beim Verarbeiten,
-rote Kurzmeldung bei Problemen.
+pinke Kurzmeldung bei Problemen.
 
 Wichtig: Das Fenster darf nie den Fokus bekommen – sonst landete der eingefügte Text
 im Overlay statt im eigentlichen Programm. Mausklicks gehen durch es hindurch.
@@ -13,7 +13,7 @@ from collections import deque
 from collections.abc import Callable
 
 from PySide6.QtCore import QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import QColor, QCursor, QGuiApplication, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from plaudertaste import theme
@@ -27,12 +27,12 @@ MESSAGE_MS = 4000  # so lange bleibt eine Meldung stehen
 MAX_MESSAGE_WIDTH = 640
 HANDS_FREE_EXTRA = 84  # Platz für den Hinweis "Freihand"
 
-BACKGROUND = QColor(28, 28, 30, 235)
-BORDER = QColor(255, 255, 255, 40)
-RED = QColor(theme.STATUS_RED)
-YELLOW = QColor(theme.STATUS_YELLOW)
-BAR = QColor(235, 235, 235)
-TEXT = QColor(220, 220, 220)
+BACKGROUND = QColor(29, 37, 43, 240)  # theme.INK, leicht durchscheinend
+BORDER = QColor(255, 255, 255, 30)
+RECORDING = QColor(theme.STATUS_RECORDING)
+PROCESSING = QColor(theme.STATUS_PROCESSING)
+BAR = QColor(theme.ACCENT)
+TEXT = QColor(theme.TEXT)
 
 SILENCE_DB = -60.0  # leiser als das zählt als Stille
 LOUD_DB = -12.0  # ab hier volle Balkenhöhe
@@ -77,9 +77,10 @@ class Overlay(QWidget):
         self._message_timer = QTimer(self, singleShot=True, interval=MESSAGE_MS)
         self._message_timer.timeout.connect(self._hide_message)
         # Schriften einmal anlegen statt bei jedem der ~30 Bilder pro Sekunde
-        self._font = QFont("Segoe UI", 10)
-        self._bold_font = QFont("Segoe UI", 10)
+        self._font = theme.ui_font(9.5)
+        self._bold_font = theme.ui_font(9.5)
         self._bold_font.setBold(True)
+        self.setFont(self._font)  # fontMetrics() misst Meldungen in derselben Schrift
 
     @property
     def status(self) -> Status | None:
@@ -119,7 +120,7 @@ class Overlay(QWidget):
         self.update()
 
     def show_message(self, text: str) -> None:
-        """Rote Kurzmeldung, verschwindet nach ein paar Sekunden von selbst."""
+        """Pinke Kurzmeldung, verschwindet nach ein paar Sekunden von selbst."""
         self._status = None
         self._timer.stop()
         self._message = text
@@ -171,7 +172,7 @@ class Overlay(QWidget):
     def _paint_message(self, painter: QPainter, text: str) -> None:
         middle = HEIGHT / 2
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(RED)
+        painter.setBrush(RECORDING)
         painter.drawEllipse(QRectF(14, middle - 9, 18, 18))
         painter.setPen(QColor("white"))
         painter.setFont(self._bold_font)
@@ -189,7 +190,7 @@ class Overlay(QWidget):
     def _paint_recording(self, painter: QPainter) -> None:
         middle = HEIGHT / 2
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(RED)
+        painter.setBrush(RECORDING)
         painter.drawEllipse(QRectF(16, middle - 6, 12, 12))
 
         painter.setBrush(BAR)
@@ -203,7 +204,7 @@ class Overlay(QWidget):
         painter.setPen(TEXT)
         painter.setFont(self._font)
         if self._hands_free:
-            painter.setPen(RED)
+            painter.setPen(RECORDING)
             painter.drawText(
                 QRectF(self.width() - 140, 0, 76, HEIGHT),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -222,7 +223,7 @@ class Overlay(QWidget):
         phase = time.monotonic() * 6
         for i in range(3):
             pulse = 0.5 + 0.5 * math.sin(phase - i * 0.9)  # wandernde Welle
-            color = QColor(YELLOW)
+            color = QColor(PROCESSING)
             color.setAlphaF(0.35 + 0.65 * pulse)
             painter.setBrush(color)
             radius = 4 + 1.5 * pulse

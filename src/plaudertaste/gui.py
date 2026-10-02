@@ -36,6 +36,7 @@ from plaudertaste.hotkey import (
     parse_hotkey,
     start_listener,
 )
+from plaudertaste.icons import make_app_icon
 from plaudertaste.main_window import MainWindow, Page
 from plaudertaste.model_download import is_model_downloaded
 from plaudertaste.model_loader import ModelLoader
@@ -49,7 +50,7 @@ from plaudertaste.single_instance import acquire_single_instance_lock
 from plaudertaste.sounds import TonePlayer, tone_for_transition
 from plaudertaste.stats import Stats
 from plaudertaste.transcriber import Transcriber
-from plaudertaste.tray import Tray, make_app_icon
+from plaudertaste.tray import Tray
 from plaudertaste.updates import Update, check_for_update
 
 log = logging.getLogger(__name__)

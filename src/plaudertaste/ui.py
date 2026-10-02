@@ -6,7 +6,7 @@ Das Aussehen kommt aus theme.py – hier werden nur die passenden objectNames ge
 from __future__ import annotations
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPaintEvent
+from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from plaudertaste import theme
+from plaudertaste.icons import paint_keycap
 
 
 def _label(text: str, name: str) -> QLabel:
@@ -165,6 +166,67 @@ class ToggleSwitch(QCheckBox):
         painter.drawText(
             text_area, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text()
         )
+        painter.end()
+
+
+class KeyCaps(QWidget):
+    """Zeichnet einen Hotkey als Tasten, z. B. [Strg] + [Alt] + [F12] – rechtsbündig."""
+
+    CAP_HEIGHT, PADDING, MIN_WIDTH, PLUS_WIDTH = 56, 18, 56, 28
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._keys: list[str] = []
+        self._font = theme.ui_font(11)
+        self._font.setWeight(QFont.Weight.DemiBold)
+
+    def set_keys(self, description: str) -> None:
+        """`description` wie von describe_hotkey: "Strg + Alt + F12"."""
+        self._keys = description.split(" + ")
+        self.updateGeometry()
+        self.update()
+
+    def keys(self) -> list[str]:
+        return list(self._keys)
+
+    def _cap_widths(self) -> list[float]:
+        self.setFont(self._font)
+        metrics = self.fontMetrics()
+        return [
+            max(self.MIN_WIDTH, metrics.horizontalAdvance(key) + 2 * self.PADDING)
+            for key in self._keys
+        ]
+
+    def sizeHint(self) -> QSize:
+        widths = self._cap_widths()
+        total = sum(widths) + self.PLUS_WIDTH * max(0, len(widths) - 1)
+        return QSize(int(total) + 2, self.CAP_HEIGHT + 4)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(self._font)
+        widths = self._cap_widths()
+        x = self.width() - sum(widths) - self.PLUS_WIDTH * max(0, len(widths) - 1) - 1
+        top = (self.height() - self.CAP_HEIGHT) / 2
+        for i, (key, width) in enumerate(zip(self._keys, widths, strict=True)):
+            if i:
+                painter.setPen(QColor(theme.INK_MUTED))
+                painter.drawText(
+                    QRectF(x, top, self.PLUS_WIDTH, self.CAP_HEIGHT * 0.76),
+                    Qt.AlignmentFlag.AlignCenter,
+                    "+",
+                )
+                x += self.PLUS_WIDTH
+            face = paint_keycap(
+                painter,
+                QRectF(x, top, width, self.CAP_HEIGHT),
+                QColor(theme.ACCENT),
+                QColor(theme.ACCENT_DEEP),
+            )
+            painter.setPen(QColor(theme.INK))
+            painter.drawText(face, Qt.AlignmentFlag.AlignCenter, key)
+            x += width
         painter.end()
 
 
