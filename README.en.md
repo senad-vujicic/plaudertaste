@@ -1,4 +1,4 @@
-# Plaudertaste
+# Plaudertaste – offline voice typing for Windows, 100 % local
 
 **Your voice stays on your computer.**<br>
 Open source, no cloud, no account – and every connection verifiable.
@@ -7,10 +7,11 @@ Open source, no cloud, no account – and every connection verifiable.
 <sub>One file, double-click to install · approx. 570 MB · Windows 10/11 (64-bit) · free ·
 <a href="https://github.com/senad-vujicic/plaudertaste/releases">all versions</a></sub>
 
-Plaudertaste is free push-to-talk dictation for Windows with a focus on German: hold a key,
-speak, release – the text appears wherever your cursor is, in Word, the browser, Outlook or
-any chat. Speech recognition (Whisper) runs entirely on your PC. There is no server your
-recordings could be sent to.
+Plaudertaste is free push-to-talk dictation software for Windows with a focus on German:
+hold a key, speak, release – the text appears wherever your cursor is, in Word, the browser,
+Outlook or any chat. Speech recognition (speech-to-text with OpenAI's Whisper model) runs
+offline and entirely on your PC. There is no server your recordings could be sent to – a
+privacy-friendly alternative to cloud dictation services.
 
 The app's user interface is in German. *Plaudertaste* is German for "chatter key".
 

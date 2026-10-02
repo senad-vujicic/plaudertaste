@@ -1,4 +1,4 @@
-# Plaudertaste
+# Plaudertaste – Diktieren per Sprache für Windows, 100 % lokal
 
 **Deine Stimme bleibt auf deinem Rechner.**<br>
 Open Source, ohne Cloud, ohne Konto – und jede Verbindung nachprüfbar.
@@ -7,10 +7,12 @@ Open Source, ohne Cloud, ohne Konto – und jede Verbindung nachprüfbar.
 <sub>Eine Datei, Doppelklick zum Installieren · ca. 570 MB · Windows 10/11 (64 Bit) · kostenlos ·
 <a href="https://github.com/senad-vujicic/plaudertaste/releases">alle Versionen</a></sub>
 
-Plaudertaste ist ein kostenloses Push-to-Talk-Diktat für Windows mit Schwerpunkt Deutsch:
+Plaudertaste ist ein kostenloses Diktier-Programm für Windows mit Schwerpunkt Deutsch:
 Taste gedrückt halten, sprechen, loslassen – der Text erscheint dort, wo dein Cursor steht,
-in Word, im Browser, in Outlook oder in jedem Chat. Die Spracherkennung (Whisper) läuft
-vollständig auf deinem PC. Es gibt keinen Server, an den deine Aufnahmen gehen könnten.
+in Word, im Browser, in Outlook oder in jedem Chat. Die Spracherkennung (Speech-to-Text mit
+OpenAIs Whisper-Modell) läuft offline und vollständig auf deinem PC. Es gibt keinen Server, an
+den deine Aufnahmen gehen könnten – eine datenschutzfreundliche Alternative zu
+Cloud-Diktierdiensten.
 
 <img src="docs/bilder/hauptfenster.png" alt="Hauptfenster von Plaudertaste" width="720">
 
